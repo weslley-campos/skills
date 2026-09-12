@@ -13,6 +13,7 @@ read instructions from disk can use them.
 | Skill | Description |
 |-------|-------------|
 | [`commit-message`](skills/commit-message) | Generates emoji-prefixed conventional commit messages from your staged changes. |
+| [`gradle-convention-plugin`](skills/gradle-convention-plugin) | Sets up Gradle convention plugins in a `build-logic` included build and migrates modules onto them. |
 
 ## Usage
 
@@ -59,51 +60,3 @@ ships a plugin manifest, so it can be installed as a marketplace instead:
 
 Plugin skills are namespaced, so they are invoked as
 `/commit-message:commit-message` or `/skill:commit-message`.
-
-## Adding a skill
-
-Create a directory under `skills/` containing a `SKILL.md`:
-
-```
-skills/my-skill/SKILL.md
-```
-
-The frontmatter drives discovery. Write the `description` for the model, not
-for a human — it is often the only thing an agent reads when deciding whether
-the skill applies, so spell out the trigger phrases explicitly:
-
-```markdown
----
-name: my-skill
-description: >
-  What the skill does. Use this skill whenever the user says "...", asks to
-  ..., or any variation of requesting ....
----
-
-Instructions for the agent go here.
-```
-
-Keep the body portable: describe the workflow and the shell commands to run.
-Do not depend on tools, file layouts, or slash commands that only one agent
-provides.
-
-### Claude Code plugin manifest
-
-`.claude-plugin/marketplace.json` lets the repo double as a Claude Code plugin
-marketplace. It is optional and every other install path ignores it. The
-`skill` bundle picks up new directories automatically; to make a skill
-installable on its own, add an entry and validate:
-
-```json
-{
-  "name": "my-skill",
-  "description": "What it does",
-  "source": "./",
-  "strict": false,
-  "skills": ["./skills/my-skill"]
-}
-```
-
-```bash
-claude plugin validate .
-```

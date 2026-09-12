@@ -21,6 +21,15 @@
       "skills": [
         "./skills/commit-message"
       ]
+    },
+    {
+      "name": "gradle-convention-plugin",
+      "description": "Set up Gradle convention plugins in a build-logic included build",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/gradle-convention-plugin"
+      ]
     }
   ]
 }
