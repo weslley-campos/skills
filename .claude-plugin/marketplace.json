@@ -1,0 +1,26 @@
+{
+  "name": "weslley-skills",
+  "owner": {
+    "name": "Weslley Campos"
+  },
+  "metadata": {
+    "description": "Weslley's Claude Code skills",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "skill",
+      "description": "All of Weslley's skills",
+      "source": "./"
+    },
+    {
+      "name": "commit-message",
+      "description": "Emoji-prefixed conventional commit messages",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/commit-message"
+      ]
+    }
+  ]
+}
