@@ -23,34 +23,21 @@ Clone the repo once:
 git clone git@github.com:weslley-campos/skills.git ~/skills
 ```
 
-Then make the skills visible to your agent. Every agent discovers
-instructions somewhere — a directory it scans, or a file it always reads.
-Symlink into the former, or reference from the latter.
+Then make the skills visible to your agent. Every agent discovers instructions
+one of two ways — a directory it scans, or a file it always reads — so either
+symlink into that directory, or reference the skill from that file.
 
-**Symlink into a directory the agent scans:**
+### Claude Code
+
+Symlink into `~/.claude/skills/`, which makes the skill invocable as
+`/commit-message`:
 
 ```bash
-ln -s ~/skills/skills/commit-message <agent-skills-dir>/commit-message
+ln -s ~/skills/skills/commit-message ~/.claude/skills/commit-message
 ```
 
-**Or reference from the always-read instructions file** (`AGENTS.md`,
-`CLAUDE.md`, or equivalent):
-
-```markdown
-## Skills
-
-- [commit-message](~/skills/skills/commit-message/SKILL.md) — read and follow
-  this when asked to commit.
-```
-
-Symlinking and referencing both beat copying: edits to the repo take effect
-immediately, and one `git pull` updates every agent at once.
-
-### Agent-specific notes
-
-**Claude Code** — symlink into `~/.claude/skills/` to invoke a skill as
-`/commit-message`; edits apply on the next `/reload-skills`. The repo also
-ships a plugin manifest, so it can be installed as a marketplace instead:
+Edits apply on the next `/reload-skills`. Alternatively install the repo as a
+plugin marketplace, which namespaces the command but handles updates for you:
 
 ```
 /plugin marketplace add weslley-campos/skills
@@ -58,5 +45,101 @@ ships a plugin manifest, so it can be installed as a marketplace instead:
 /plugin install skill@weslley-skills            # every skill in this repo
 ```
 
-Plugin skills are namespaced, so they are invoked as
-`/commit-message:commit-message` or `/skill:commit-message`.
+### Codex CLI, Gemini CLI and Copilot
+
+These load Markdown instruction files rather than scanning a skills directory,
+so reference the skills you want from a file the agent already reads:
+
+```markdown
+## Skills
+
+Read and follow the linked file before starting a matching task.
+
+- [commit-message](~/skills/skills/commit-message/SKILL.md) — writing a git
+  commit message.
+- [gradle-convention-plugin](~/skills/skills/gradle-convention-plugin/SKILL.md)
+  — Gradle convention plugins, `build-logic`, deduplicating module config.
+```
+
+Which file to put that in:
+
+| Agent | Global | Per-project |
+|-------|--------|-------------|
+| [Codex CLI](https://developers.openai.com/codex/guides/agents-md) | `~/.codex/AGENTS.md` | `AGENTS.md`, at any directory level |
+| [Gemini CLI](https://google-gemini.github.io/gemini-cli/docs/cli/gemini-md.html) | `~/.gemini/GEMINI.md` | `GEMINI.md`, at any directory level |
+| [Copilot](https://docs.github.com/copilot/customizing-copilot/adding-custom-instructions-for-github-copilot) | — | `.github/copilot-instructions.md`, `AGENTS.md`, or `.github/instructions/*.instructions.md` |
+
+`AGENTS.md` is the common denominator: Codex and Copilot read it with no
+configuration, and Gemini CLI can be pointed at it by setting
+`contextFileName` in `.gemini/settings.json`. One file, three agents.
+
+All three load these files hierarchically — a nested file applies to its
+subtree and overrides what is above it — so a skill can be scoped to the
+project or module that needs it. Copilot goes further with `applyTo`
+frontmatter in `.github/instructions/*.instructions.md`, which scopes by glob:
+
+```markdown
+---
+applyTo: "**/*.gradle.kts"
+---
+```
+
+### Any other agent
+
+The pattern generalises. Find the directory your agent scans or the file it
+always reads, then symlink or reference accordingly:
+
+```bash
+ln -s ~/skills/skills/commit-message <agent-skills-dir>/commit-message
+```
+
+Symlinking and referencing both beat copying: edits take effect immediately,
+and one `git pull` updates every agent at once.
+
+## Adding a skill
+
+Create a directory under `skills/` containing a `SKILL.md`:
+
+```
+skills/my-skill/SKILL.md
+```
+
+The frontmatter drives discovery. Write the `description` for the model, not
+for a human — it is often the only thing an agent reads when deciding whether
+the skill applies, so spell out the trigger phrases explicitly:
+
+```markdown
+---
+name: my-skill
+description: >
+  What the skill does. Use this skill whenever the user says "...", asks to
+  ..., or any variation of requesting ....
+---
+
+Instructions for the agent go here.
+```
+
+Keep the body portable: describe the workflow and the shell commands to run.
+Do not depend on tools, file layouts, or slash commands that only one agent
+provides.
+
+### Claude Code plugin manifest
+
+`.claude-plugin/marketplace.json` lets the repo double as a Claude Code plugin
+marketplace. It is optional and every other install path ignores it. The
+`skill` bundle picks up new directories automatically; to make a skill
+installable on its own, add an entry and validate:
+
+```json
+{
+  "name": "my-skill",
+  "description": "What it does",
+  "source": "./",
+  "strict": false,
+  "skills": ["./skills/my-skill"]
+}
+```
+
+```bash
+claude plugin validate .
+```
