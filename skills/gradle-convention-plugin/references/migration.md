@@ -39,8 +39,8 @@ resolution, the catalog bridge, the namespace derivation and the application-onl
 | `testInstrumentationRunner` | library and multiplatform conventions | set by `AndroidLibraryConventionPlugin` and `configureLibrary()`, not by `configureAndroid()` |
 | `buildFeatures { compose = true }` | convention, **only if universal** | otherwise its own `<prefix>.compose` plugin |
 | `dependencies { }` | **stays** | this is what makes the module itself |
-| KMP iOS targets and `framework { }` | multiplatform convention | one framework name and one target list per build; see `configureIosFramework()` in `references/conventions.md` |
-| KMP `sourceSets { }` dependencies | **stays** | ditto |
+| KMP targets and target configuration | base only when intrinsic to every module of that role; otherwise additive convention or **stays** | preserve the surveyed topology and exact semantics; see `references/targets.md` |
+| KMP `sourceSets { }` dependencies | **stays** unless intrinsic to the module role | dependencies usually define the module rather than its target topology |
 | signing configs, flavours, per-module `buildConfigField` | **stays** unless genuinely shared | moving a one-off into build-logic hides it |
 
 An application module with an androidTest suite needs `testInstrumentationRunner` added explicitly to
@@ -202,7 +202,8 @@ applied *by* the convention plugin, so the module asks for one id instead of two
 stays, for the same reason it stays on the application module: it is a third-party plugin the module
 needs, not something the convention decides.
 
-The iOS targets and the `framework { }` block went to `configureIosFramework()` in the convention.
+In this example, the iOS targets and the `framework { }` block went to `configureIosFramework()`
+because every module using this specific convention owns them.
 Carry the target list, the `baseName` and `isStatic` across unchanged — the framework name is what
 the Swift `import` resolves against, so a "tidier" name breaks the iOS app rather than the build.
 `./gradlew help` will not catch that; `./gradlew :<module>:linkDebugFrameworkIosArm64` will.
@@ -216,6 +217,10 @@ a package derived from the module — change a module's name or namespace during
 imports like `import <something>.generated.resources.Res` move with it. The compile error appears in
 UI code, far from the build file that caused it, so if you rename anything, grep for
 `generated.resources` before declaring victory.
+
+For JVM/Desktop, JS browser or Node, WasmJS, and other native targets, first apply the ownership
+decision in `references/targets.md`. Never make this Android+iOS example the default topology for a
+different KMP module role, and configure moved targets before accessing their target source sets.
 
 ## Catalog alias renaming
 

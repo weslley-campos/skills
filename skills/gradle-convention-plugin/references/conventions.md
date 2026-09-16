@@ -319,8 +319,8 @@ import org.gradle.api.Project
 import org.gradle.kotlin.dsl.apply
 
 /**
- * Convention for a Kotlin Multiplatform library module — the Android target, the Apple targets and
- * the framework they produce. Modules keep their other targets and their dependencies.
+ * Convention for a Kotlin Multiplatform library module whose surveyed role always owns Android and
+ * iOS framework targets. Modules keep optional targets and their dependencies.
  */
 class MultiplatformLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -418,14 +418,12 @@ One name for every module on this convention is the ceiling: a second multiplatf
 build a second binary under the same name, and Xcode embeds one. When a second one appears, derive
 the name per module the way `androidNamespace` is derived, and update the Xcode project to match.
 
-If some multiplatform modules ship no Apple targets at all, this does not belong in the base
-convention — give it its own `<prefix>.ios` add-on applied next to the library convention, the shape
-`references/compose.md` describes. A module that gains iOS targets it never asked for compiles Kotlin
-for two platforms nobody consumes.
-
-Still deliberately **not** in this plugin: JVM and other targets, and `sourceSets { }` dependencies.
-Those are what makes a multiplatform module itself, and hiding them in build-logic makes modules
-harder to read for no gain.
+This combined example is valid only when every module using the base convention owns both target
+families. Otherwise keep the base to the role's universal targets, move shared optional families to
+add-ons such as `<prefix>.ios` or `<prefix>.web`, and leave one-offs explicit. JVM, JS, WasmJS, and
+additional native targets are not categorically module-local: their ownership follows the same rule.
+Read `references/targets.md` before adapting this example. Source-set dependencies stay unless they
+are genuinely intrinsic to the module role.
 
 ## AGP 8 vs AGP 9
 

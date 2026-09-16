@@ -2,7 +2,8 @@
 name: gradle-convention-plugin
 description: >
   Set up Gradle convention plugins in a `build-logic` included build and migrate existing module
-  build files onto them, for Kotlin, Android and Kotlin Multiplatform projects. Use this skill
+  build files onto them, for Kotlin, Android and Kotlin Multiplatform projects, including JVM/Desktop,
+  JS, Wasm and native target topologies. Use this skill
   whenever the user mentions convention plugins, build-logic, buildSrc, `includeBuild`, sharing or
   deduplicating Gradle configuration across modules, "every module repeats the same android { }
   block", pulling compileSdk / minSdk / namespace / jvmTarget into one place, the Now in Android
@@ -31,6 +32,10 @@ after it derives from what it prints.
 **Adding one more convention plugin to a build that already has `build-logic`** is the section at
 the bottom of this file, plus its focused reference: `references/compose.md` for Compose,
 `references/koin.md` for Koin, or `references/conventions.md` for the base class templates.
+
+If the survey finds JVM/Desktop, JS, WasmJS, or native targets beyond the build's universal Android
+or iOS shape—or the request names a target-specific application convention—read
+`references/targets.md` before deciding which target declarations belong in a base convention.
 
 Either way, `## Verify` below is the gate, and `references/troubleshooting.md` maps the error you
 actually see to the cause.
@@ -181,6 +186,7 @@ is a dependency line, not a convention — see "Things that look shared but are 
 - `references/init.md` — bootstrap `build-logic` and migrate the modules, in six steps
 - `references/scaffold.md` — every file `init` creates, and the catalog entries, in full
 - `references/conventions.md` — plugin and extension templates per module type, and AGP 8 vs 9
+- `references/targets.md` — classify KMP module roles and preserve JVM/Desktop, JS, Wasm and native targets
 - `references/compose.md` — the Compose convention plugin, whose dependency list is asked, not assumed
 - `references/koin.md` — add the Koin compiler plugin, including migration cleanup from KSP
 - `references/migration.md` — what to delete from a module, what must stay, with before/after

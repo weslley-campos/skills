@@ -31,7 +31,7 @@ If `buildSrc` already exists, point out that Gradle recommends an included build
 plugins: it is independently structured, and changes to one build-logic subproject need not make
 unrelated build-logic subprojects out-of-date. Ask before deleting anything.
 
-## Step 2 — Decide the five things everything else derives from
+## Step 2 — Decide the build shape everything else derives from
 
 Work these out from the survey, then state them back to the user in one short block and let them
 correct you. Getting these wrong is expensive to undo later; asking costs one message.
@@ -40,7 +40,7 @@ correct you. Getting these wrong is expensive to undo later; asking costs one me
 |---|---|---|
 | **Plugin id prefix** | `rootProject.name` lowercased, letters only — shortened to the recognisable stem if that comes out unwieldy. It namespaces the ids so they can never collide with a third-party plugin, and it appears in every module file, so confirm it. | `nowinandroid`, `acme` |
 | **Root package** | The sole app's existing `applicationId`; with multiple apps, the shortest common dot-segment prefix of their ids or module namespaces. | `br.com.example` |
-| **Which conventions** | One per *module type present in the build*, not per module. Do not invent a convention for a shape that does not exist yet. | application + kmp-library |
+| **Module-role/target matrix** | For each module, record its role and every existing target. Choose one base convention per module role being migrated. Use additive target conventions only for configuration shared by multiple modules; leave one-off target configuration explicit. Read `references/targets.md` for JVM/Desktop, JS, WasmJS, and native targets. | desktop app: JVM; browser app: JS browser + WasmJS; shared library: Android + iOS |
 | **Application identity** | Count Android application modules. With one, its namespace, application id and version may be centralised. With more than one, each module keeps those values. | one app: shared; two apps: module-specific |
 | **AGP generation** | The `agp` version in the catalog. AGP 8 and AGP 9 differ in ways that will not compile against each other — see `references/conventions.md`. | `9.0.1` → AGP 9 |
 
@@ -48,6 +48,13 @@ The plugin ids follow from the prefix: `<prefix>.android.application`,
 `<prefix>.android.library`, `<prefix>.multiplatform.library`. Catalog aliases are the same words in
 kebab-case (`<prefix>-android-application`), which is what makes `alias(libs.plugins.<prefix>.android.application)`
 resolve.
+
+Other surveyed roles and target add-ons may produce ids such as `<prefix>.jvm.application`,
+`<prefix>.web.application`, or `<prefix>.ios`. These are examples, not a required taxonomy: name
+only the conventions justified by the build's actual roles and target ownership.
+
+Do not collapse the matrix into one target set for all KMP modules. A desktop application, browser
+application, and shared library can all use KMP while owning different targets and packaging.
 
 ## Step 3 — Scaffold `build-logic`
 
@@ -101,7 +108,8 @@ section of `SKILL.md` after the first one before touching the rest — the first
 classpath and DSL mistakes surface, and finding them once beats finding them four times.
 
 A migrated module build file should contain a `plugins { }` block of aliases and a `dependencies { }`
-block, plus a `kotlin { sourceSets { } }` block on a multiplatform module. If anything else
+block, plus any module-specific targets, source-set dependencies, or packaging that did not earn a
+convention. If anything else
 survives, either it is genuinely module-specific (a signing config, a unique buildFeature, a target
 only this module has) and correctly stays, or it belongs in a convention plugin and you missed it.
 Say which of the two it is rather than leaving it unexplained.
