@@ -7,8 +7,8 @@ description: >
   whenever the user mentions convention plugins, build-logic, buildSrc, `includeBuild`, sharing or
   deduplicating Gradle configuration across modules, "every module repeats the same android { }
   block", pulling compileSdk / minSdk / namespace / jvmTarget into one place, the Now in Android
-  build setup, shared Compose or Koin setup, or asks to tidy up, standardise or modularise a Gradle
-  build — even when they never say "convention plugin" out loud. Also use when adding another
+  build setup, shared Compose, Koin, or Detekt setup, or asks to tidy up, standardise or modularise
+  a Gradle build — even when they never say "convention plugin" out loud. Also use when adding another
   convention plugin to a build that already has build-logic.
 ---
 
@@ -31,7 +31,8 @@ after it derives from what it prints.
 
 **Adding one more convention plugin to a build that already has `build-logic`** is the section at
 the bottom of this file, plus its focused reference: `references/compose.md` for Compose,
-`references/koin.md` for Koin, or `references/conventions.md` for the base class templates.
+`references/koin.md` for Koin, `references/detekt.md` for a shared Detekt quality policy, or
+`references/conventions.md` for the base class templates.
 
 If the survey finds JVM/Desktop, JS, WasmJS, or native targets beyond the build's universal Android
 or iOS shape—or the request names a target-specific application convention—read
@@ -42,9 +43,9 @@ actually see to the cause.
 
 ## Arguments, and what to do when the ground is missing
 
-An argument names one convention to add — `compose` or `koin`, for instance. Run the survey before
-deciding anything either way, because the route depends on whether `build-logic` already exists,
-and the survey prints exactly that line.
+An argument names one convention to add — `compose`, `koin`, or `detekt`, for instance. Run the
+survey before deciding anything either way, because the route depends on whether `build-logic`
+already exists, and the survey prints exactly that line.
 
 | Invocation | `build-logic` | Route |
 |---|---|---|
@@ -176,10 +177,11 @@ when missed:
   only exists on `build-logic`'s `compileOnly` classpath, which breaks the single-classloader
   guarantee invariant 2 describes.
 
-Before writing it, check that it earns a convention plugin at all: the configuration has to be a
-property of a *kind* of module, with more than one module of that kind. One module needing a library
-is a dependency line, not a convention — see "Things that look shared but are not" in
-`references/migration.md`.
+Before writing it, check that it earns a convention plugin at all: the configuration normally has to
+be a property of a *kind* of module, with more than one module of that kind. A build-wide quality
+policy such as Detekt is the deliberate exception: it is shared across multiple consumers rather
+than selecting a module type. One module needing a library is a dependency line, not a convention —
+see "Things that look shared but are not" in `references/migration.md`.
 
 ## Reference files
 
@@ -189,5 +191,6 @@ is a dependency line, not a convention — see "Things that look shared but are 
 - `references/targets.md` — classify KMP module roles and preserve JVM/Desktop, JS, Wasm and native targets
 - `references/compose.md` — the Compose convention plugin, whose dependency list is asked, not assumed
 - `references/koin.md` — add the Koin compiler plugin, including migration cleanup from KSP
+- `references/detekt.md` — add a version-aware, build-wide Detekt quality convention
 - `references/migration.md` — what to delete from a module, what must stay, with before/after
 - `references/troubleshooting.md` — error message → cause → fix
