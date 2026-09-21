@@ -14,6 +14,7 @@ read instructions from disk can use them.
 |-------|-------------|
 | [`commit-message`](skills/commit-message) | Generates emoji-prefixed conventional commit messages from your staged changes. |
 | [`gradle-convention-plugin`](skills/gradle-convention-plugin) | Sets up Gradle convention plugins in a `build-logic` included build and migrates modules onto them. |
+| [`gradle-module-creator`](skills/gradle-module-creator) | Creates Gradle modules by reusing an Android, Kotlin/JVM, or Kotlin Multiplatform project's existing patterns. |
 
 ## Usage
 
@@ -42,6 +43,7 @@ plugin marketplace, which namespaces the command but handles updates for you:
 ```
 /plugin marketplace add weslley-campos/skills
 /plugin install commit-message@weslley-skills   # a single skill
+/plugin install gradle-module-creator@weslley-skills # module creator plus convention companion
 /plugin install skill@weslley-skills            # every skill in this repo
 ```
 
@@ -59,6 +61,8 @@ Read and follow the linked file before starting a matching task.
   commit message.
 - [gradle-convention-plugin](~/skills/skills/gradle-convention-plugin/SKILL.md)
   — Gradle convention plugins, `build-logic`, deduplicating module config.
+- [gradle-module-creator](~/skills/skills/gradle-module-creator/SKILL.md) — adding
+  Android, Kotlin/JVM, or Kotlin Multiplatform modules to an existing Gradle build.
 ```
 
 Which file to put that in:

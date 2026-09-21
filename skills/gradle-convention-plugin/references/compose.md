@@ -251,6 +251,10 @@ One class, applied on top of whichever base convention the module declares. The 
 unconditional. Everything else hangs off a reaction to the plugin that creates the DSL that branch
 needs:
 
+Add only the `DependencyHandler` helpers this plugin needs from `references/conventions.md` under
+`extensions/Dependencies.kt`. `androidRuntimeClasspath` applies only to an AGP 9 KMP Android library
+branch where that configuration exists.
+
 ```kotlin
 import com.android.build.api.dsl.CommonExtension
 import extensions.configureComposeMultiplatform
@@ -382,8 +386,11 @@ functions, only from a different class.
 
 ## Step 5 — `extensions/Compose.kt`
 
-The rows checked in step 1 land here. `commonMain` is the only source set every multiplatform module
-is guaranteed to have, so anything platform-specific is a **defensive lookup**:
+The rows checked in step 1 land here. Match source-set access to the module role the convention
+guarantees. A convention specifically for multiplatform Android libraries can use `androidMain`
+directly, just as every multiplatform convention can use `commonMain` and `commonTest` directly.
+A generic KMP convention shared by web, desktop, and Android modules must keep defensive lookups for
+platform-specific source sets:
 
 ```kotlin
 internal fun Project.configureComposeMultiplatform() {
@@ -400,9 +407,9 @@ internal fun Project.configureComposeMultiplatform() {
                 // ...
             }
 
-            // androidMain exists only when an Android target is registered. A single-target module —
-            // a desktop or web entry point — has no such source set, and getByName would fail the
-            // whole configuration phase for a dependency it does not need.
+            // Keep this lookup only because this generic KMP convention also serves modules without
+            // Android. A convention whose module kind guarantees Android should use
+            // `androidMain.dependencies { ... }` directly.
             findByName("androidMain")?.dependencies {
                 // @Preview rendering in the IDE, as opposed to the annotation.
                 implementation(libs.compose.ui.tooling)
@@ -422,15 +429,39 @@ internal fun Project.configureComposeMultiplatform() {
 }
 ```
 
-`findByName(...)?` rather than `getByName(...)`, with the comment kept: the next person to add a
-single-target module is the one it protects, and the failure it prevents names a source set rather
-than the missing target.
+`sourceSets.apply { ... }` is intentional in a compiled plugin class: the build-script
+`sourceSets { ... }` accessor may not be available there. Inside it, prefer direct source-set
+properties whenever the convention guarantees the target:
+
+```kotlin
+sourceSets.apply {
+    androidMain.dependencies {
+        implementation(libs.compose.ui.tooling)
+    }
+    commonMain.dependencies {
+        // ...
+    }
+    commonTest.dependencies {
+        // ...
+    }
+}
+```
+
+Use `findByName(...)?` only for genuinely optional source sets such as `androidMain` or `jvmTest` in
+a generic KMP convention. Keep the nearby comment explaining which supported module lacks the
+target; that makes the defensive lookup an explicit compatibility choice rather than cargo cult.
 
 The preview renderer needs the tooling artifact on the Android **runtime** classpath. The
-`androidMain` placement above is the portable one. On the AGP 9 multiplatform library DSL there is
-also a runtime-only configuration, which keeps tooling off the compile classpath where it belongs;
-confirm the configuration name against the AGP on the classpath before using it, and do not add both
-placements — one of them is then dead weight that no error will ever point at.
+`androidMain` placement above is the portable one. On the AGP 9 multiplatform library DSL,
+`androidRuntimeClasspath` keeps tooling off the compile classpath where it belongs:
+
+```kotlin
+dependencies.androidRuntimeClasspath(libs.compose.ui.tooling)
+```
+
+Import the helper from `extensions/Dependencies.kt` and use it only in the AGP 9 KMP Android branch
+where that configuration exists. Do not add both placements — one of them is then dead weight that
+no error will ever point at.
 
 ## Step 6 — generated resources, for multiplatform modules
 

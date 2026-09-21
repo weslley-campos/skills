@@ -30,6 +30,16 @@
       "skills": [
         "./skills/gradle-convention-plugin"
       ]
+    },
+    {
+      "name": "gradle-module-creator",
+      "description": "Create Gradle modules from an existing project's Android, Kotlin, or KMP patterns",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/gradle-module-creator",
+        "./skills/gradle-convention-plugin"
+      ]
     }
   ]
 }

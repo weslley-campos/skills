@@ -21,7 +21,7 @@ convention/src/main/kotlin/
 ├── MultiplatformLibraryConventionPlugin.kt
 └── extensions/
     ├── Project.kt                             catalog access, JVM target
-    ├── Dependencies.kt                        implementation/debugImplementation for plugin classes
+    ├── Dependencies.kt                        dependency configurations for plugin classes
     └── Android.kt                             the actual Android configuration
 ```
 
@@ -90,10 +90,19 @@ internal fun DependencyHandler.implementation(dependency: Any): Dependency? =
 /** Android only: AGP is what creates the per-variant `debugImplementation` configuration. */
 internal fun DependencyHandler.debugImplementation(dependency: Any): Dependency? =
     add("debugImplementation", dependency)
+
+/** AGP 9 KMP Android only: use where the plugin creates this configuration. */
+internal fun DependencyHandler.androidRuntimeClasspath(dependency: Any): Dependency? =
+    add("androidRuntimeClasspath", dependency)
 ```
 
-These are for the classic `dependencies { }` handler only. A Kotlin Multiplatform source set has its
-own `implementation(...)` inside `commonMain.dependencies { }` and needs none of this.
+Use these helpers from compiled convention plugin classes for the project `dependencies { }`
+handler. `androidRuntimeClasspath` is specific to AGP 9 KMP Android libraries and must only be used
+where that configuration exists. A Kotlin Multiplatform source set has its own `implementation(...)`
+inside `commonMain.dependencies { }`, `androidMain.dependencies { }`, and similar blocks, and needs
+none of them. Access source sets directly when the convention guarantees their targets; reserve
+`findByName(...)?` for optional platform source sets in conventions shared across unlike KMP module
+kinds.
 
 ## `extensions/Android.kt` — the shared configuration
 
