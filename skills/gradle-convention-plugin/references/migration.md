@@ -113,9 +113,10 @@ dependencies {
 The `import` at the top goes with the `kotlin { }` block. Leaving an unused import behind is a
 warning, not an error, so it survives migrations easily — check for it.
 
-`compose.compiler` stays in the module's `plugins { }` because it is a third-party plugin the module
-needs, not a convention. Whether to fold it into the convention plugin is the judgement call
-described under `buildFeatures` above.
+This application example leaves `compose.compiler` in the module because the application
+convention does not apply it. If that convention is specifically for entry points that compile
+Compose, apply the compiler there and remove the module alias. An Android wrapper with no Compose
+compilation needs neither compiler nor `buildFeatures.compose`.
 
 With multiple application modules, the after-state keeps identity and version explicit:
 
@@ -197,10 +198,11 @@ kotlin {
 }
 ```
 
-Note what disappeared from `plugins { }`: `kotlin.multiplatform` and `multiplatform.library` are now
-applied *by* the convention plugin, so the module asks for one id instead of two. `compose.compiler`
-stays, for the same reason it stays on the application module: it is a third-party plugin the module
-needs, not something the convention decides.
+Here the base convention replaces the two Kotlin/Android aliases while Compose remains in the
+module. If shared libraries also share the Compose dependency and resource policy, add the focused
+`<prefix>.compose.library` convention beside the base alias and remove both raw Compose aliases and
+the moved shared UI dependencies. See [the Compose convention guide](compose.md); keep unique
+dependencies in the module.
 
 In this example, the iOS targets and the `framework { }` block went to `configureIosFramework()`
 because every module using this specific convention owns them.

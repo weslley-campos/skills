@@ -1,8 +1,9 @@
 # The Compose convention plugin
 
 Compose is the one convention plugin whose substance is dependencies rather than DSL settings. The
-compiler wiring is three lines. The value is that every Compose module receives the same UI stack,
-the same test dependencies and the same generated-resource naming without any module repeating them.
+compiler wiring is three lines. The value is that modules with the same role receive the same UI
+stack, test dependencies and generated-resource naming without unrelated entry points inheriting
+them too.
 
 Because a dependency list is taste rather than fact, this is the one convention in the skill that
 asks the user rather than deciding for them. Step 1 is that question, and it comes first — the plugin
@@ -107,11 +108,12 @@ Four notes that belong in the message rather than in a later surprise:
   and `NavHost` owns the stack, and the two do not compose — a module takes one or the other. So read
   the survey first. A build already on Navigation 2 keeps it and this step wires nothing new for
   navigation; say that plainly rather than adding a second navigation library beside the first.
-- **The table names roles, not coordinates.** Where the catalog already has an alias, use it. Where it
-  does not, confirm the current coordinates against the library's own documentation before adding the
-  entry — the navigation and adaptive artifacts in particular have been renamed more than once, and a
-  table in a skill file is the wrong place to trust for a group id. Navigation 3 is the youngest family
-  on the list and the one most likely to have moved since this was written, so check all four before
+- **The table is a portable choice menu, not a fixed dependency list.** Where the catalog
+  already has an alias, use it. Where it does not, confirm the current coordinates against the
+  library's own documentation before adding the entry. Navigation and adaptive artifacts have
+  been renamed more than once, so a table in a skill file is the wrong place to trust for a group id.
+  Navigation 3 is the youngest family on the list and the one most likely to have moved since this
+  was written, so check all four before
   adding any of them.
 - **The artifact family follows the module type, not preference.** A multiplatform module takes the
   `org.jetbrains.compose.*` artifacts; an Android-only module takes `androidx.compose.*` with the
@@ -153,39 +155,11 @@ reference at the first use site, in a module file that looks correct.
 
 ## Step 2 — decide the plugin shape
 
-Two shapes work. **Prefer the add-on**, and read the alternative before ruling it out.
+Choose from the module roles and base conventions found by the survey. Do not start from a preferred
+shape and make every Compose consumer fit it.
 
-Check the base conventions first, though: if they are already two separate classes because their
-DSLs share no supertype — a classic `com.android.application`/`com.android.library` extension versus
-a Kotlin Multiplatform Android library target's own DSL, the split Step 3 describes — pairing mirrors
-a split the codebase already made, instead of re-introducing it as `withPlugin` branches inside one
-new class. Prefer the add-on when the base conventions are unified enough that one Compose class
-reacting to each ecosystem's plugin id would not be duplicating a division that already exists
-elsewhere in `build-logic`.
-
-**An add-on plugin** — `<prefix>.compose`, applied *next to* whichever base convention the module
-already has, adding nothing but Compose:
-
-```kotlin
-plugins {
-    alias(libs.plugins.<prefix>.library)
-    alias(libs.plugins.<prefix>.compose)
-}
-```
-
-One class then serves every module type in the build. That is the whole argument: Compose is
-orthogonal to what kind of module something is, so folding it into the base conventions means a
-`library`, an `application` and a `jvm` variant of the same twenty dependency lines, and the fourth
-module type multiplies again. The module file also says out loud that this module draws UI, which is
-worth one extra line.
-
-Name the id `<prefix>.compose`, without a module type in it. An id ending in `library` reads as a
-contradiction the moment it sits under `alias(libs.plugins.<prefix>.android.application)`, and it
-will, because the application module needs Compose too.
-
-**A pairing plugin** — one class per base convention Compose combines with,
-`<prefix>.compose.application` next to `<prefix>.compose.library`, each applying its own base plugin
-before wiring Compose. The module still declares both ids:
+Use a focused `<prefix>.compose.library` add-on when shared UI lives in library modules and the build
+already has dedicated application conventions. Apply it next to the base library convention:
 
 ```kotlin
 plugins {
@@ -194,25 +168,23 @@ plugins {
 }
 ```
 
-**Apply the third-party base plugin from the Compose class — the raw `com.android.application` or the
-raw multiplatform-library id — never this project's own base convention id.** A base convention that
-does real work beyond enabling Compose (setting `namespace` and `compileSdk`, registering iOS targets,
-whatever a `configureAndroid`/`configureLibrary` step does) only runs when *its own* alias is applied.
-The trap is applying that convention id from the Compose class instead of the raw plugin, then dropping
-the base alias from the module file on the reasoning that the Compose class now covers it — that
-configuration silently never runs once the base alias is gone. The failure surfaces far from the cause:
-AGP demanding `compileSdk` or a namespace that plainly is set somewhere in the convention plugin —
-because it is, just in a class nothing ever applies.
+That add-on owns the dependency selection from step 1 and the resource policy from steps 5 and 6.
+Application conventions own their targets and small role-specific dependency set. Apply the Compose
+compiler and, for KMP entry points, Compose Multiplatform only when that entry point compiles Compose.
+A JVM launcher may need the desktop runtime; a browser launcher may need browser navigation. An
+Android wrapper with no Compose source and no `setContent { }` needs no Compose compiler. Entry
+points do not inherit the full shared UI stack or generated-resource policy merely because they apply
+`org.jetbrains.kotlin.multiplatform`.
 
-Applying the raw third-party id from the Compose class removes the ordering question below without
-removing the base alias: whichever id the module lists first, the other `apply()` call either
-configures the extension for the first time or is a no-op on an id already applied — Gradle tolerates
-applying the same plugin id twice. What the pairing shape actually buys, once both shapes need two
-aliases in the module file, is a smaller class with no `withPlugin` reaction to write, not a shorter
-`plugins { }` block.
+Use a generic `<prefix>.compose` add-on only when the survey shows that the same Compose setup really
+spans several module roles: the same dependencies, resource policy and plugin wiring all apply to
+each consumer. If its `withPlugin` branches mostly suppress dependencies or resources for entry
+points, the roles are different and the generic class is hiding that difference.
 
-The add-on carries one real hazard: anything it reads off another plugin's extension is absent if the
-module happens to list the add-on first. Guard it by reacting rather than reading:
+List the base convention before a Compose add-on when the base registers source sets that the add-on
+configures. Applying the raw third-party plugin creates its extension, but does not register the
+base convention's targets. For extension-only configuration that does not depend on those targets,
+apply the raw plugin as in step 4 or react to it:
 
 ```kotlin
 pluginManager.withPlugin(libs.plugins.android.application.get().pluginId) {
@@ -226,132 +198,30 @@ two lines more and cannot be got wrong.
 
 ## Step 3 — the compiler, and the two Android DSLs
 
-Three facts drive the whole class, and each one is verifiable in seconds with the recipe in
+Three facts drive the conventions, and each one is verifiable in seconds with the recipe in
 `references/conventions.md` under "Verify the types before you commit to them":
 
 1. **AGP 9 built-in Kotlin support does not bring the Compose compiler.** AGP applies KGP itself, so
    no `org.jetbrains.kotlin.android` is needed for Kotlin to compile — but
    `org.jetbrains.kotlin.plugin.compose` is a separate KGP plugin that AGP never applies. The
-   convention plugin applies it, always, for every module type.
+   convention for every module that compiles composables must apply it.
 2. **`buildFeatures.compose` is not the compiler and is not obsolete.** It still exists on
    `BuildFeatures` in current AGP and still defaults to `false`; it drives the AGP and IDE side,
-   previews and Live Edit. Set it, and do not expect it to make anything compile.
+   previews and Live Edit. Set it for classic Android modules that compile Compose; it does not
+   make composables compile by itself.
 3. **It exists on the classic DSL only.** `KotlinMultiplatformAndroidLibraryExtension` has no
    `buildFeatures` member at all, so a multiplatform Android library has nothing to set and needs no
-   equivalent. This is the one hard branch in a plugin that covers both module types, and it is why
-   the branches in step 4 are `withPlugin` reactions on the base plugin rather than a condition on
-   the module: each branch touches a DSL the other one does not have.
+   equivalent. A generic add-on needs separate `withPlugin` reactions because each branch touches a
+   DSL the other one does not have; a role-specific convention should touch only its own DSL.
 
 The compiler version is not a decision any more: since Kotlin 2.0 the Compose compiler ships with
 KGP and tracks it. A catalog entry pinning a separate compiler version is a leftover to delete.
 
 ## Step 4 — the plugin class
 
-One class, applied on top of whichever base convention the module declares. The compiler plugin is
-unconditional. Everything else hangs off a reaction to the plugin that creates the DSL that branch
-needs:
-
-Add only the `DependencyHandler` helpers this plugin needs from `references/conventions.md` under
-`extensions/Dependencies.kt`. `androidRuntimeClasspath` applies only to an AGP 9 KMP Android library
-branch where that configuration exists.
-
-```kotlin
-import com.android.build.api.dsl.CommonExtension
-import extensions.configureComposeMultiplatform
-import extensions.configureComposeResources
-import extensions.debugImplementation
-import extensions.implementation
-import extensions.libs
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.kotlin.dsl.apply
-import org.gradle.kotlin.dsl.configure
-import org.gradle.kotlin.dsl.dependencies
-
-/**
- * Compose for any module that opts into it, applied next to that module's own convention plugin —
- * `<prefix>.library` or `<prefix>.android.application` — in either order.
- */
-class ComposeMultiplatformConventionPlugin : Plugin<Project> {
-    override fun apply(target: Project) = with(target) {
-        // Every module type needs this, and no module type gets it for free: AGP's built-in Kotlin
-        // support compiles Kotlin and never applies the Compose compiler.
-        apply(plugin = libs.plugins.compose.compiler.get().pluginId)
-
-        // The classic DSL, where `buildFeatures.compose` exists at all.
-        pluginManager.withPlugin(libs.plugins.android.application.get().pluginId) {
-            extensions.configure<CommonExtension> {
-                buildFeatures.compose = true
-            }
-            dependencies {
-                implementation(libs.compose.ui.tooling.preview)
-                debugImplementation(libs.compose.ui.tooling)
-            }
-        }
-
-        // The multiplatform DSL: the shared UI stack and the generated-resource naming.
-        pluginManager.withPlugin(libs.plugins.kotlin.multiplatform.get().pluginId) {
-            apply(plugin = libs.plugins.compose.multiplatform.get().pluginId)
-            configureComposeMultiplatform()
-            configureComposeResources()
-        }
-    }
-}
-```
-
-Reacting to the **third-party** ids rather than to `<prefix>.library` is what makes the order inside
-the module's `plugins { }` block irrelevant. Whichever convention runs second, its `com.android.*` or
-`org.jetbrains.kotlin.multiplatform` application fires a reaction that is already registered. Add one
-`withPlugin` branch per base plugin the build actually has, `com.android.library` included if there
-are classic library modules, and the same Compose plugin serves all of them.
-
-`org.jetbrains.compose` is applied in the multiplatform branch only. An application module consuming
-composables from a shared module needs the artifacts and the compiler, not the resource generation
-machinery, and applying a plugin whose work has no inputs is how a build acquires tasks nobody can
-account for.
-
-The dependency split follows the same line. Where the UI lives in a shared multiplatform module, the
-application branch above is complete as written — preview tooling is all it needs, because everything
-else arrives transitively. In a single-module Android-only Compose build there is no `commonMain`, so
-the rows checked in step 1 go on `implementation` in that branch instead, alongside the Compose BOM.
-
-One trap when deciding whether an application module needs this plugin at all: `setContent { }` takes
-a `@Composable` lambda, so a module whose only Compose is that one call still needs the compiler
-plugin. Absence of `@Composable` in the module's own sources proves nothing.
-
-### If step 2 chose the pairing shape instead
-
-One class per base convention, each applying the **third-party** base plugin — not this project's own
-base convention id — before wiring Compose. Same compiler line, same DSL branch as the add-on above;
-the difference is that each class touches only the one DSL its own base plugin creates, applied
-directly rather than reacted to:
-
-```kotlin
-import com.android.build.api.dsl.CommonExtension
-import extensions.debugImplementation
-import extensions.implementation
-import extensions.libs
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.kotlin.dsl.apply
-import org.gradle.kotlin.dsl.configure
-import org.gradle.kotlin.dsl.dependencies
-
-class ComposeApplicationConventionPlugin : Plugin<Project> {
-    override fun apply(target: Project) = with(target) {
-        apply(plugin = libs.plugins.android.application.get().pluginId)
-        apply(plugin = libs.plugins.compose.compiler.get().pluginId)
-
-        extensions.configure<CommonExtension> {
-            buildFeatures.compose = true
-        }
-        dependencies {
-            implementation(libs.compose.ui.tooling.preview)
-            debugImplementation(libs.compose.ui.tooling)
-        }
-    }
-}
-```
+For shared Compose library modules, add one focused class beside the existing base library
+convention. It applies the raw third-party plugins needed to create its extensions, then delegates
+the shared dependency and resource work to `extensions/Compose.kt`:
 
 ```kotlin
 import extensions.configureComposeMultiplatform
@@ -360,6 +230,8 @@ import extensions.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.apply
+import org.gradle.kotlin.dsl.configure
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 class ComposeLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -367,38 +239,80 @@ class ComposeLibraryConventionPlugin : Plugin<Project> {
         apply(plugin = libs.plugins.compose.multiplatform.get().pluginId)
         apply(plugin = libs.plugins.compose.compiler.get().pluginId)
 
-        configureComposeMultiplatform()
+        extensions.configure<KotlinMultiplatformExtension>(::configureComposeMultiplatform)
         configureComposeResources()
     }
 }
 ```
 
-`libs.plugins.android.application` and `libs.plugins.multiplatform.library` here are the raw AGP ids —
-the same ones the base convention plugins themselves apply — not `<prefix>.android.application` or
-`<prefix>.library`. Applying this project's own base convention id from inside the Compose class looks
-tempting, since it is what would let the module file drop to a single alias, but that base convention
-plugin is where `configureAndroid`/`configureLibrary` and everything past enabling Compose lives, and
-skipping its alias skips all of it. **Both module files still declare the base convention alias next to
-the Compose one**, exactly as step 2 shows; only the raw third-party `apply()` inside the Compose class
-is new here, there only to make its own extension available regardless of which alias the module lists
-first. `extensions/Compose.kt` from step 5 is unchanged either way; both shapes call the same two
-functions, only from a different class.
+`libs.plugins.multiplatform.library` is the raw third-party id the base convention also applies, not
+`<prefix>.library`. The module still declares both project convention aliases, with the base first:
+it owns the targets and Android configuration that the Compose helper reads. Reapplying the raw id is
+a no-op after the base runs. Do not drop the base alias.
+
+Application conventions apply the Compose compiler only if their entry points compile Compose; KMP
+entry points that do so also apply `org.jetbrains.compose`. Keep target declarations and role-specific
+dependencies there. Do not call the shared UI or resource helpers from an entry point unless it owns
+those policies.
+
+One trap when deciding whether an application convention needs the compiler: `setContent { }` takes
+a `@Composable` lambda, so a module whose only Compose is that one call still needs it. Absence of a
+declared `@Composable` function in the module proves nothing. A classic Android application that
+compiles Compose also sets `buildFeatures.compose = true`; a KMP application DSL has no such member.
+
+### If step 2 chose the generic add-on
+
+Keep the same helpers, but call them only for module roles that share their entire dependency and
+resource policy. React to raw third-party ids for extension availability, and still apply the base
+convention before this add-on when the helper reads target source sets:
+
+```kotlin
+class ComposeConventionPlugin : Plugin<Project> {
+    override fun apply(target: Project) = with(target) {
+        apply(plugin = libs.plugins.compose.compiler.get().pluginId)
+
+        pluginManager.withPlugin(libs.plugins.kotlin.multiplatform.get().pluginId) {
+            apply(plugin = libs.plugins.compose.multiplatform.get().pluginId)
+            extensions.configure<KotlinMultiplatformExtension>(::configureComposeMultiplatform)
+            configureComposeResources()
+        }
+    }
+}
+```
+
+Add only the branches the survey justifies. A branch that exists mainly to avoid giving an entry
+point the dependencies or resources configured by another branch is evidence for separate
+role-specific conventions instead.
+
+Add only the `DependencyHandler` helpers these conventions need from `references/conventions.md`
+under `extensions/Dependencies.kt`. `androidRuntimeClasspath` applies only to an AGP 9 KMP Android
+library branch where that configuration exists.
 
 ## Step 5 — `extensions/Compose.kt`
 
 The rows checked in step 1 land here. Match source-set access to the module role the convention
-guarantees. A convention specifically for multiplatform Android libraries can use `androidMain`
-directly, just as every multiplatform convention can use `commonMain` and `commonTest` directly.
-A generic KMP convention shared by web, desktop, and Android modules must keep defensive lookups for
-platform-specific source sets:
+guarantees. This example assumes the surveyed library convention always registers Android and may
+register JVM; adjust those two accesses to the real target guarantees. A helper reused by library,
+web, and desktop roles instead uses `findByName` for each optional platform source set:
 
 ```kotlin
-internal fun Project.configureComposeMultiplatform() {
+package extensions
+
+import org.gradle.api.Project
+import org.gradle.kotlin.dsl.apply
+import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.dependencies
+import org.gradle.kotlin.dsl.getByType
+import org.jetbrains.compose.ComposeExtension
+import org.jetbrains.compose.resources.ResourcesExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+
+internal fun Project.configureComposeMultiplatform(extension: KotlinMultiplatformExtension) {
     // Only needed for `compose.desktop.currentOs` below: that one is an accessor on the Compose
     // extension rather than a catalog coordinate, since the artifact varies by host.
     val compose = extensions.getByType<ComposeExtension>().dependencies
 
-    extensions.configure<KotlinMultiplatformExtension> {
+    extension.apply {
         sourceSets.apply {
             commonMain.dependencies {
                 // One implementation line per checked row, each under a one-line comment saying what
@@ -407,14 +321,13 @@ internal fun Project.configureComposeMultiplatform() {
                 // ...
             }
 
-            // Keep this lookup only because this generic KMP convention also serves modules without
-            // Android. A convention whose module kind guarantees Android should use
-            // `androidMain.dependencies { ... }` directly.
-            findByName("androidMain")?.dependencies {
+            androidMain.dependencies {
                 // @Preview rendering in the IDE, as opposed to the annotation.
                 implementation(libs.compose.ui.tooling)
             }
 
+            // JVM is optional in this surveyed library role; omit the lookup only when it is a
+            // guaranteed target.
             findByName("jvmTest")?.dependencies {
                 // The Skiko and AWT runtime that runComposeUiTest needs on the JVM.
                 implementation(compose.desktop.currentOs)
@@ -429,8 +342,10 @@ internal fun Project.configureComposeMultiplatform() {
 }
 ```
 
-`sourceSets.apply { ... }` is intentional in a compiled plugin class: the build-script
-`sourceSets { ... }` accessor may not be available there. Inside it, prefer direct source-set
+Keep the `extension.apply { sourceSets.apply { ... } }` receiver when passing this helper to
+`extensions.configure<KotlinMultiplatformExtension>(::configureComposeMultiplatform)`. Omitting the
+outer receiver can fail to compile the helper. The build-script `sourceSets { ... }` accessor may not
+be available in a compiled plugin class. Inside it, prefer direct source-set
 properties whenever the convention guarantees the target:
 
 ```kotlin
@@ -447,9 +362,10 @@ sourceSets.apply {
 }
 ```
 
-Use `findByName(...)?` only for genuinely optional source sets such as `androidMain` or `jvmTest` in
-a generic KMP convention. Keep the nearby comment explaining which supported module lacks the
-target; that makes the defensive lookup an explicit compatibility choice rather than cargo cult.
+Use `findByName(...)?` only for genuinely optional source sets. A generic KMP helper used across
+roles may need it for `androidMain` and `jvmTest`; the focused example above uses direct
+`androidMain` because its base convention guarantees Android. Keep a nearby comment explaining
+which supported role lacks an optional target.
 
 The preview renderer needs the tooling artifact on the Android **runtime** classpath. The
 `androidMain` placement above is the portable one. On the AGP 9 multiplatform library DSL,
@@ -488,8 +404,10 @@ internal fun String.toResClassName(): String = split(":")
     .joinToString("", postfix = "Res") { it.replaceFirstChar(Char::uppercaseChar) }
 ```
 
-`generateResClass = auto` so a module with no `composeResources/` directory generates nothing, which
-keeps the convention applicable to every Compose module rather than only the ones holding assets.
+`generateResClass = auto` so a library with no `composeResources/` directory generates nothing,
+which keeps the convention applicable to every shared Compose library rather than only the ones
+holding assets.
+
 `publicResClass = true` only if modules consume each other's resources; leave it out otherwise, since
 an internal class is the better default.
 
@@ -512,11 +430,10 @@ compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin"
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
-# Plugins defined by this project — the add-on shape takes one id:
-<prefix>-compose = { id = "<prefix>.compose" }
-# the pairing shape takes one id per base convention, alongside each one's own existing entry:
-<prefix>-compose-application = { id = "<prefix>.compose.application" }
+# Focused shared-library add-on, beside the existing base library convention:
 <prefix>-compose-library = { id = "<prefix>.compose.library" }
+# Use this instead only when the surveyed setup genuinely spans module roles:
+<prefix>-compose = { id = "<prefix>.compose" }
 ```
 
 - `compose-compiler` takes `version.ref = "kotlin"`, not a version of its own. See step 3.
@@ -555,5 +472,5 @@ configure and resolve perfectly and still fail to compile a single composable:
 ```
 
 If `assemble` reports that a `@Composable` invocation can only happen inside another `@Composable`
-function, the compiler plugin is not applied to that module — the module type branch in step 3 is
-where to look, not the dependency list.
+function, the compiler plugin is not applied to that module — its role convention in steps 3 and 4
+is where to look, not the dependency list.
