@@ -18,10 +18,14 @@ must not inherit the same targets merely because both apply KMP.
 
 For every block, use this ownership test:
 
-1. Put a target in a base convention only when every module of that role already owns it.
+1. Put a target in a base convention when every module of that role already owns it. A convention
+   dedicated to one exact role, especially a sole consumer, may own that role's complete existing
+   topology when that is its intended scope or the user asks for a plugin-only module file; preserve
+   it exactly rather than broadening a generic convention.
 2. If several but not all modules share it, make an additive convention such as `<prefix>.ios` or
    `<prefix>.web` and apply it beside the base.
-3. If it is a one-off, leave it explicit in the module.
+3. If it is a module-specific one-off and no dedicated-role/plugin-only outcome was requested, leave
+   it explicit in the module.
 
 Migration must never add a target a module did not already have. Do not register the same target in
 both the base and an add-on convention. Apply KMP/Kotlin and, where needed, Compose plugins before
@@ -41,7 +45,10 @@ Move the exact existing semantics:
 
 Do not silently normalize ports, output names, disabled tests, package names, target names, or
 dependencies. Source-set dependencies stay in the module unless they are truly a property of the
-module role rather than its implementation.
+module role rather than its implementation. When a dedicated role convention owns that complete
+topology, move such an intrinsic source-set dependency with the target and use
+`sourceSets.apply { <sourceSet>.dependencies { ... } }` in the compiled plugin class; the concise
+build-script `sourceSets { }` accessor may not compile there.
 
 Compose Desktop packaging is application configuration layered on a JVM target; it is not another
 Kotlin target. Plugin classes that configure its DSL types need the Compose Gradle plugin artifact

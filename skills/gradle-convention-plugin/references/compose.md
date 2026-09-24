@@ -196,6 +196,17 @@ pluginManager.withPlugin(libs.plugins.android.application.get().pluginId) {
 configures nothing, silently — a module that builds, runs, and has no Compose tooling. The reaction is
 two lines more and cannot be got wrong.
 
+Before finishing this route, audit every `kotlin { }` block left in each migrated Compose consumer.
+When the user asks for a Blog-style, plugin-only module file, or an existing base convention is
+deliberately the complete topology for that dedicated role, move that role's remaining target setup
+into the base role convention too — including the exact JVM/JS target names, `browser` or `nodejs`,
+binary kind, and any source-set dependency intrinsic to that role. Preserve the declarations exactly
+and remove them from the module so no target is registered twice. In a compiled plugin class use
+`sourceSets.apply { jsMain.dependencies { ... } }`; the build-script `sourceSets { ... }` accessor may
+not compile there. A target or dependency that is genuinely specific to the module stays explicit.
+See `references/targets.md` for the ownership test; do not give other consumers targets they did not
+already have merely to make one module file shorter.
+
 ## Step 3 — the compiler, and the two Android DSLs
 
 Three facts drive the conventions, and each one is verifiable in seconds with the recipe in

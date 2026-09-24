@@ -43,6 +43,13 @@ resolution, the catalog bridge, the namespace derivation and the application-onl
 | KMP `sourceSets { }` dependencies | **stays** unless intrinsic to the module role | dependencies usually define the module rather than its target topology |
 | signing configs, flavours, per-module `buildConfigField` | **stays** unless genuinely shared | moving a one-off into build-logic hides it |
 
+If the requested end state is a Blog-style, plugin-only module file, audit every remaining
+`kotlin { }` declaration after the focused migration. A base convention dedicated to that exact role
+can own its complete existing target topology — including JVM/JS browser and binary configuration —
+and source-set dependencies intrinsic to the role. Preserve the exact settings, remove the module
+copy to avoid duplicate target registration, and use `sourceSets.apply { ... }` inside the compiled
+plugin class. Truly module-specific targets and dependencies still stay here.
+
 An application module with an androidTest suite needs `testInstrumentationRunner` added explicitly to
 `defaultConfig` inside the application convention — neither `configureAndroid()` nor
 `AndroidApplicationConventionPlugin` sets it, so nothing else will.
