@@ -29,10 +29,12 @@ Plugin classes sit in the **default package**. `implementationClass` in `gradleP
 fully-qualified name, so a package would have to be repeated there; the convention in this ecosystem
 (and in Now in Android) is to skip it. The helpers do get a package, because they are imported.
 
-The rule that keeps this from rotting: **a plugin class contains only what is unique to its module
-type.** The moment two plugin classes contain the same line, that line belongs in `extensions/`.
-Applied honestly, a convention plugin ends up being four or five lines, which is the point — it
-makes "what is different about an application module?" answerable by reading one short file.
+For KMP targets and source sets, keep plugin classes focused on applying plugins and composing
+named helpers. Put those DSL blocks in `extensions/`, including target configuration unique to one
+module role. A helper does not need two callers to earn its place: it keeps the plugin's target list
+and execution order readable. Use
+`extensions.configure<KotlinMultiplatformExtension>(::configureRole)` for helpers that accept the
+KMP extension, as in the Blog build; keep module-specific dependencies in module build files.
 
 ## `extensions/Project.kt` — the catalog bridge
 
@@ -326,6 +328,8 @@ import extensions.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.apply
+import org.gradle.kotlin.dsl.configure
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
  * Convention for a Kotlin Multiplatform library module whose surveyed role always owns Android and
@@ -335,8 +339,8 @@ class MultiplatformLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
         apply(plugin = libs.plugins.kotlin.multiplatform.get().pluginId)
         apply(plugin = libs.plugins.multiplatform.library.get().pluginId)
-        configureLibrary()
-        configureIosFramework()
+        extensions.configure<KotlinMultiplatformExtension>(::configureLibrary)
+        extensions.configure<KotlinMultiplatformExtension>(::configureIosFramework)
     }
 }
 ```
@@ -352,8 +356,8 @@ with, in `extensions/Android.kt`:
  * Note the name: a plain `com.android.library` module is on the classic DSL and calls
  * [configureAndroid], not this.
  */
-internal fun Project.configureLibrary() {
-    extensions.configure<KotlinMultiplatformExtension> {
+internal fun Project.configureLibrary(extension: KotlinMultiplatformExtension) {
+    extension.apply {
         targets.withType<KotlinMultiplatformAndroidLibraryTarget>().configureEach {
             namespace = androidNamespace
             compileSdk = androidCompileSdk
@@ -396,8 +400,8 @@ and, in `extensions/Ios.kt`:
  */
 private const val IOS_FRAMEWORK_NAME = "<FrameworkName>"
 
-internal fun Project.configureIosFramework() {
-    extensions.configure<KotlinMultiplatformExtension> {
+internal fun Project.configureIosFramework(extension: KotlinMultiplatformExtension) {
+    extension.apply {
         listOf(
             iosArm64(),
             iosSimulatorArm64(),

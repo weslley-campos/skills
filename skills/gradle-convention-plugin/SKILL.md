@@ -112,6 +112,14 @@ Say so and ask, rather than inventing a base convention nobody requested.
 └── <module>/build.gradle.kts        plugins { alias(...) } + dependencies { }, and that is all
 ```
 
+Keep KMP convention plugin classes as a short list of plugin applications and named helper calls.
+Put target declarations, binary settings, and intrinsic source-set dependencies in `extensions/`
+helpers, even when a helper serves only one module role. For KMP, prefer
+`Project.configureRole(extension: KotlinMultiplatformExtension)` called with
+`extensions.configure<KotlinMultiplatformExtension>(::configureRole)`. Do not append a large inline
+`extensions.configure<KotlinMultiplatformExtension> { ... }` block before the helper calls. Keep
+module-specific dependencies in the module. See `references/targets.md` for the target examples.
+
 ## Verify
 
 ```bash

@@ -46,9 +46,9 @@ Move the exact existing semantics:
 Do not silently normalize ports, output names, disabled tests, package names, target names, or
 dependencies. Source-set dependencies stay in the module unless they are truly a property of the
 module role rather than its implementation. When a dedicated role convention owns that complete
-topology, move such an intrinsic source-set dependency with the target and use
-`sourceSets.apply { <sourceSet>.dependencies { ... } }` in the compiled plugin class; the concise
-build-script `sourceSets { }` accessor may not compile there.
+topology, move such an intrinsic source-set dependency into its target helper and use
+`sourceSets.apply { <sourceSet>.dependencies { ... } }`; the concise build-script
+`sourceSets { }` accessor may not compile in build-logic.
 
 Compose Desktop packaging is application configuration layered on a JVM target; it is not another
 Kotlin target. Plugin classes that configure its DSL types need the Compose Gradle plugin artifact
@@ -58,11 +58,14 @@ alias with `apply false`, following the same classloader invariant as AGP and KG
 ## Adaptable shapes
 
 These helpers show placement and ordering only. Replace placeholders with surveyed values and omit
-any setting the module did not already have.
+any setting the module did not already have. The plugin applies its plugins, then calls a named
+helper: `extensions.configure<KotlinMultiplatformExtension>(::configureWasmJsTarget)`. Keep the
+target and any intrinsic source-set dependencies in that helper, rather than adding an inline
+`extensions.configure<KotlinMultiplatformExtension> { ... }` block to the plugin class.
 
 ```kotlin
-internal fun Project.configureWasmJsTarget() {
-    extensions.configure<KotlinMultiplatformExtension> {
+internal fun Project.configureWasmJsTarget(extension: KotlinMultiplatformExtension) {
+    extension.apply {
         wasmJs("<existing-target-name>") {
             browser {
                 commonWebpackConfig {
@@ -91,19 +94,26 @@ class DesktopApplicationConventionPlugin : Plugin<Project> {
         apply(plugin = libs.plugins.compose.multiplatform.get().pluginId)
         apply(plugin = libs.plugins.compose.compiler.get().pluginId)
 
-        extensions.configure<KotlinMultiplatformExtension> {
-            jvm("<existing-target-name>") {
-                compilerOptions { jvmTarget.set(<existing-jvm-target>) }
-            }
-        }
-        extensions.getByType<ComposeExtension>().extensions.configure<DesktopExtension> {
-            application {
-                mainClass = "<existing-main-class>"
-                nativeDistributions {
-                    targetFormats(<existing-package-formats>)
-                    packageName = "<existing-package-name>"
-                    packageVersion = "<existing-package-version>"
-                }
+        extensions.configure<KotlinMultiplatformExtension>(::configureDesktopJvm)
+        configureDesktopPackaging()
+    }
+}
+
+// In extensions/Desktop.kt:
+internal fun Project.configureDesktopJvm(extension: KotlinMultiplatformExtension) {
+    extension.jvm("<existing-target-name>") {
+        compilerOptions { jvmTarget.set(<existing-jvm-target>) }
+    }
+}
+
+internal fun Project.configureDesktopPackaging() {
+    extensions.getByType<ComposeExtension>().extensions.configure<DesktopExtension> {
+        application {
+            mainClass = "<existing-main-class>"
+            nativeDistributions {
+                targetFormats(<existing-package-formats>)
+                packageName = "<existing-package-name>"
+                packageVersion = "<existing-package-version>"
             }
         }
     }

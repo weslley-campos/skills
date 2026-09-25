@@ -48,7 +48,7 @@ If the requested end state is a Blog-style, plugin-only module file, audit every
 can own its complete existing target topology — including JVM/JS browser and binary configuration —
 and source-set dependencies intrinsic to the role. Preserve the exact settings, remove the module
 copy to avoid duplicate target registration, and use `sourceSets.apply { ... }` inside the compiled
-plugin class. Truly module-specific targets and dependencies still stay here.
+target helper. Truly module-specific targets and dependencies still stay here.
 
 An application module with an androidTest suite needs `testInstrumentationRunner` added explicitly to
 `defaultConfig` inside the application convention — neither `configureAndroid()` nor

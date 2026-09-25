@@ -209,6 +209,7 @@ plugin, then adds only the two portable dependencies genuinely shared by every K
 WorkManager dependencies module-local — see "Select integrations per module" above.
 
 ```kotlin
+import extensions.configureKoinDependencies
 import extensions.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -223,16 +224,29 @@ class KoinConventionPlugin : Plugin<Project> {
         apply(plugin = libs.plugins.kotlin.multiplatform.get().pluginId)
         apply(plugin = libs.plugins.koin.compiler.get().pluginId)
 
-        extensions.configure<KotlinMultiplatformExtension> {
-            sourceSets.commonMain.dependencies {
-                implementation(libs.koin.core)
-                implementation(libs.koin.annotations)
-            }
-        }
-      
+        extensions.configure<KotlinMultiplatformExtension>(::configureKoinDependencies)
+
         extensions.configure<KoinGradleExtension> {
             userLogs = true
             logSeverity = "info"
+        }
+    }
+}
+```
+
+In `extensions/Koin.kt`:
+
+```kotlin
+package extensions
+
+import org.gradle.api.Project
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+
+internal fun Project.configureKoinDependencies(extension: KotlinMultiplatformExtension) {
+    extension.sourceSets.apply {
+        commonMain.dependencies {
+            implementation(libs.koin.core)
+            implementation(libs.koin.annotations)
         }
     }
 }
