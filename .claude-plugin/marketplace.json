@@ -40,6 +40,15 @@
         "./skills/gradle-module-creator",
         "./skills/gradle-convention-plugin"
       ]
+    },
+    {
+      "name": "navigation3-multiplatform",
+      "description": "Add modular Compose Multiplatform Navigation 3 routing",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/navigation3-multiplatform"
+      ]
     }
   ]
 }
