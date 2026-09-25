@@ -123,8 +123,10 @@ private fun <Name>ScreenPreview() {
 ## DI declaration and registration
 
 Choose the existing mechanism; do not introduce a framework or dummy injectable to fill a template.
-A stateless screen needs no ViewModel. A full feature still gets the project's module/composition
-declaration, even if initially empty; required navigation bindings belong there.
+A stateless screen needs no ViewModel. With module-based DI, a full feature gets the project's
+module declaration and registration; required navigation bindings belong there.
+With no existing DI, use the app's composition root to construct and pass only the values the
+screen needs. An empty DI module is unnecessary; direct composition is the registration.
 
 Koin annotations, with existing KSP/compiler wiring on the actual compilations:
 
@@ -234,6 +236,14 @@ through the existing navigation API; add visible controls only when requested or
 existing navigation menu/registry, otherwise report that no UI entry action was chosen.
 
 ## Navigation Compose and other frameworks
+
+When there is no navigation framework or host, first check whether existing app state and Compose
+can provide a real route and back behavior on all requested targets. Wire the host into the app
+composition root and expose a callable navigation action. Put the route in the app or a registered
+shared contract module when dependency direction requires it. If a framework is needed, verify a
+version against authoritative release/docs information and the project's targets and dependency
+policy; add its build dependencies and host, then register the feature. Do not create a route in an
+unconsumed module or leave the screen as an unused import.
 
 For typed Navigation Compose with serialization configured, put the destination in its established
 owner and the builder in the feature (separate packages/files with actual imports):

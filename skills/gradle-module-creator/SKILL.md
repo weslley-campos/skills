@@ -12,12 +12,15 @@ description: >
 Deliver a usable scaffold, including its consumer wiring. A feature or screen request implies the
 full feature profile below; the user need not separately request each integration. Explicit opt-outs
 win. Reuse repository contracts, never project-specific identifiers from an unrelated example.
+If the consumer lacks a required DI, navigation, or quality setup, add the smallest compatible
+prerequisite and wire it into the consumer as part of the feature. A buildable feature module alone
+does not satisfy a screen request.
 
 ## 1. Select the module profile
 
 | Profile | Base build + settings | Compose + screen/preview | DI | Detekt | Navigation |
 |---|---|---|---|---|---|
-| Feature / screen | Required | Required | Declaration + registration | Required | Route + builder + host/provider wiring |
+| Feature / screen | Required | Required | Module registration or direct composition | Required | Route + builder + host/provider wiring |
 | Core UI | Required | UI entry point + supported preview | Existing policy / requested bindings | Existing policy | Only when its role requires it |
 | Core / infrastructure | Required | No | Existing policy / requested bindings | Existing policy | No |
 | Domain / pure Kotlin | Required | No | Only if compatible with domain policy | Existing policy | No |
@@ -52,10 +55,14 @@ assume type-safe project accessor spelling. Check the destination and Gradle inc
 for collisions before creating files; extend an existing module only when that is the user's intent.
 
 One compatible example is enough; integrations do not require unanimous same-role siblings.
-Resolve disagreements using the closest applicable convention and actual consumer. If a required
-choice is absent (DI framework/manual wiring, navigation approach, target, or quality policy), ask
-one focused question covering unresolved choices and continue independent work. Do not silently
-omit a required integration or select a new framework/version.
+Resolve disagreements using the closest applicable convention and actual consumer. When there is
+no existing DI or navigation mechanism, prefer direct composition and a small route/host using
+dependencies already present or compatible with the build, unless the user chose a framework or
+convention. Do not add a framework merely to fill a template. Ask one focused question only when
+a consequential choice cannot be inferred from the repository or user intent (for example, an
+unspecified platform target or an incompatible framework choice). Continue independent work while
+awaiting the answer, then finish the integration; never call a partial scaffold complete. Do not
+silently omit a required integration or invent a framework version.
 
 ## 3. Create the base project
 
@@ -81,7 +88,7 @@ MODULE_DIR/
   MAIN/PACKAGE_DIR/
     NameScreen.kt
     NameScreenPreview.kt                  # or supported preview source set
-    di/NameModule.kt
+    di/NameModule.kt                      # only for a module-based DI mechanism
     navigation/NameEntryBuilder.kt        # or NameNavigation.kt for NavGraphBuilder
     navigation/NameEntryProvider.kt       # only when the project has this contract
 ROUTE_OWNER/ROUTE_MAIN/ROUTE_PACKAGE_DIR/
@@ -102,7 +109,9 @@ tooling is a stated limitation, not a reason to omit the screen.
 Create the repository's DI declaration: Koin annotation/DSL module, Hilt/Dagger module and actual
 component contract, or existing manual composition entry point. Wire navigation providers through
 DI when that is how the host discovers them. Follow the reference templates; an applied plugin
-does not constitute a DI declaration or graph registration.
+does not constitute a DI declaration or graph registration. If the app has no DI mechanism, wire
+the screen and navigation directly from its composition root; an empty container or dummy binding
+is not a prerequisite.
 
 ## 5. Create navigation and connect consumers
 
@@ -110,15 +119,22 @@ Create the route/destination in its established owner, then its screen builder a
 when required. For Nav3 use the existing typed `NavKey` contract; for Navigation Compose use the
 existing `NavGraphBuilder` and route style. Other frameworks fulfill destination → screen → host
 roles through their own APIs. A custom `EntryProvider` is not an AndroidX built-in interface.
+If no navigation exists, create the smallest host in the consumer and place the route there or in
+a shared contract module when dependency direction requires it. Register any new prerequisite
+module and its build dependencies. Use existing dependencies where possible; if a navigation
+library is needed, verify its version and target compatibility from authoritative release/docs
+information before adding it. The destination must be reachable through an actual navigation
+call, not just a declared route or unused screen.
 
-Add the feature dependency to the consumer, add its DI module to the actual root/aggregate or
-generated discovery path, and register its builder/provider with the actual host. For decentralized
+Add the feature dependency to the consumer and register its builder/provider with the actual host.
+For module-based DI, add the feature's module to the root/aggregate or generated discovery path;
+for manual composition, call the feature from the consumer's composition root. For decentralized
 discovery, still satisfy classpath, scanning/binding, and collection-consumption requirements.
-Make the registered destination callable through the existing navigation API. Add a visible menu,
-tab, or button only when requested or required by an existing navigation menu/registry; otherwise
-report that the route is registered with no UI entry action chosen. Preserve app layout, start
-destination, and back-stack behavior. Keep dependency direction acyclic: the shared
-route contract must not depend on its feature implementation.
+Make the registered destination callable through the existing or newly created navigation API.
+Add a visible menu, tab, or button only when requested or required by an existing navigation
+menu/registry; otherwise report that the route is registered with no UI entry action chosen.
+Preserve app layout, start destination, and back-stack behavior. Keep dependency direction acyclic:
+the shared route contract must not depend on its feature implementation.
 
 ## 6. Apply quality coverage
 
@@ -128,9 +144,10 @@ autoCorrect; use an existing nonmutating check or scope execution to the new mod
 aggregate auto-correction. Review any resulting edits.
 
 If existing policy cannot supply required coverage, resolve it rather than silently dropping it.
-When shared convention work is authorized, use
+Adding a needed DI convention or quality hook for the new feature is part of its scaffold;
+when that requires convention work, use
 [gradle-convention-plugin](../gradle-convention-plugin/SKILL.md), finish its checks, then resume here.
-Module creation alone does not authorize migrating the build or inventing plugin versions.
+Do not migrate unrelated modules or invent plugin versions.
 
 ## 7. Verify and complete
 
@@ -151,7 +168,7 @@ runtime discovery; report that limit and any environment-blocked checks.
 - [ ] Unique project is included and mapped to the created build/source tree.
 - [ ] DSL, packages, plugins, targets, source sets, and dependencies match the build.
 - [ ] Feature has a Compose screen and supported preview (or explicit tooling limitation).
-- [ ] DI declaration and root/aggregate/discovery registration are complete.
+- [ ] DI module registration or direct consumer composition is complete.
 - [ ] Route, builder, required provider/serializer, and host integration are complete.
 - [ ] Consumer dependency and callable route are wired without cycles or unsolicited UI actions.
 - [ ] Required Detekt policy covers the module without duplicated configuration.
