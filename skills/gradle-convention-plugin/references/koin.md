@@ -399,6 +399,50 @@ coordinates against the
 [official Navigation 3 integration](https://insert-koin.io/docs/reference/koin-compose/navigation3/).
 If either the runtime or serialization plugin is absent, the integration selection is incomplete.
 
+## Delegating ViewModels and circular dependencies
+
+When `KOIN-D004` reports `HomeViewModel → HomeViewModel`, inspect annotation bindings before
+changing Gradle dependencies. Both an app and a feature depending on `core.navigation` is a valid
+project graph; the diagnostic describes Koin's object graph. A Kotlin import alone does not create
+a DI binding.
+
+In `ViewModel(), Navigator by navigator`, `ViewModel` is a superclass and `Navigator` is an
+implemented interface. The problem does not require multiple interfaces: the class both consumes
+and implements `Navigator`. Plain `@KoinViewModel` automatically binds implemented interfaces,
+making the ViewModel another provider of `Navigator` alongside `NavigatorImpl`. If resolution
+selects the ViewModel for its own constructor parameter, it creates a self-cycle.
+
+When creating or updating a ViewModel that constructor-injects and delegates an interface, bind
+explicitly to that same concrete ViewModel unless additional DI bindings are intentional:
+
+```kotlin
+@KoinViewModel(binds = [HomeViewModel::class])
+class HomeViewModel(
+    val navigator: Navigator,
+) : ViewModel(), Navigator by navigator
+```
+
+Match the binding to the annotated class: `AuthViewModel` uses
+`@KoinViewModel(binds = [AuthViewModel::class])`. Keep the real navigator provider's
+`@Single(binds = [Navigator::class])` binding. Explicit self-binding replaces automatic interface
+binding while preserving constructor injection and delegation. `binds = []` also suppresses
+automatic bindings, but prefer explicit self-binding for this pattern. `Lazy<Navigator>` does not
+remove an unintended binding.
+
+**Only one ViewModel may trigger the diagnostic.** In compiler plugin 1.2.1, the cycle checker uses
+`putIfAbsent` when mapping interface bindings to providers, so discovery order in the assembled
+Koin graph affects which provider it checks. A sibling ViewModel can retain an unintended
+`Navigator` binding without producing the same error. Treat this selection behavior as
+version-specific, not as a runtime ordering guarantee or proof that every binding is intentional.
+
+Inspect the assembled modules and generated bindings when explaining an asymmetry between
+ViewModels. Separate the change proven necessary for the reported failure from any cleanup of
+sibling bindings, and compile the application entry point that reported the error (for example,
+`:androidApp:compileDebugKotlin`); compiling a library without a Koin entry point is insufficient.
+
+See Koin's [automatic or specific binding documentation](https://insert-koin.io/docs/reference/koin-annotations/definitions/#automatic-or-specific-binding)
+and the [delegation issue](https://github.com/InsertKoinIO/koin-compiler-plugin/issues/12).
+
 ## Migrate from KSP
 
 Treat the old KSP path as input to remove, not as a parallel fallback:
