@@ -20,8 +20,8 @@ does not satisfy a screen request.
 
 | Profile | Base build + settings | Compose + screen/preview | DI | Detekt | Navigation |
 |---|---|---|---|---|---|
-| Feature / screen | Required | Required | Module registration or direct composition | Required | Route + builder + host/provider wiring |
-| Core UI | Required | UI entry point + supported preview | Existing policy / requested bindings | Existing policy | Only when its role requires it |
+| Feature / screen | Required | Required | Module registration or direct composition | Required | Key + entry + registration |
+| Core UI | Required | UI entry point + preview | Existing policy / requested bindings | Existing policy | Only when its role requires it |
 | Core / infrastructure | Required | No | Existing policy / requested bindings | Existing policy | No |
 | Domain / pure Kotlin | Required | No | Only if compatible with domain policy | Existing policy | No |
 
@@ -29,30 +29,34 @@ Categories describe roles, not fixed directories. Keep pure domain modules free 
 dependencies. Do not invent services, repositories, ViewModels, or base classes without behavior
 that needs them. “Base module” means the Gradle project and sources, not `BaseModule` inheritance.
 
-## 2. Resolve the scaffold parameters
+## 2. Read the build, then resolve names
 
-Use `rg --files` to locate settings, root/module build files, catalogs, conventions, and Kotlin sources.
-Read the settings/root build, catalog, nearest target-compatible sibling, and consuming app/graph.
-Trace one existing feature end to end: plugins → sources → DI → navigation → consumer.
-Read [references/integrations.md](references/integrations.md) for the selected integrations.
+Use `rg --files` to locate settings, the root build, the catalog, `build-logic` or `buildSrc`, and
+Kotlin sources. Read the settings, the nearest target-compatible sibling, and the conventions it
+applies. Note what those conventions already supply, because the new build file declares only the
+rest: targets and source-set hierarchy, Android namespace and SDKs, the serialization plugin,
+Compose/lifecycle/navigation libraries, DI libraries and compiler, the iOS framework, and Detekt.
+Trace one existing feature end to end: plugins → sources → DI module → navigation key and
+entry → the module that registers it → the hosts. The registering consumer is often the shared app
+module, not the platform launchers. Read [references/integrations.md](references/integrations.md)
+for the selected integrations.
 
-Resolve these values before writing; tokens below are documentation, never generated output:
-
-| Parameter | Derivation |
+| Value | Derivation |
 |---|---|
-| `MODULE_DIR`, `PROJECT_PATH` | Existing category layout and settings mapping, including custom `projectDir` |
-| `PACKAGE`, `PACKAGE_DIR` | Repository base package + naming policy; directory uses `/` instead of `.` |
-| `Name`, `name` | PascalCase type prefix and camelCase function/property prefix from requested name |
-| `MAIN` | Actual source root: e.g. `src/main/kotlin` or `src/commonMain/kotlin` |
-| Build inputs | Existing DSL, plugin IDs/aliases, catalog, SDK/toolchain, targets/source-set hierarchy |
-| Integration owners | Shared route package/project, DI root/aggregate, host/provider collection, consumer |
-| Dependencies | Existing UI/theme, navigation contract, DI/compiler, serialization, preview artifacts |
+| Project path and directory | Existing category layout and settings mapping, including custom `projectDir` |
+| Package | Repository base package plus the path, the way siblings and the namespace convention derive it |
+| `<Name>`, `<name>` | PascalCase type prefix and camelCase function/property prefix from the requested name |
+| Source root | Actual root, e.g. `src/commonMain/kotlin` or `src/main/kotlin` |
+| Consumer | The module whose DI root or navigation host registers features |
 
-For `account-settings`, preserve Gradle/path spelling if customary, derive `AccountSettings` /
-`accountSettings`, and use the repository's legal package spelling (such as `accountsettings`).
-Resolve invalid identifiers/keywords explicitly; never put hyphens in package declarations or
-assume type-safe project accessor spelling. Check the destination and Gradle includes/mappings
-for collisions before creating files; extend an existing module only when that is the user's intent.
+For `account-settings`, derive `AccountSettings` / `accountSettings` and a legal package segment
+such as `accountsettings`; never put hyphens in package declarations. A convention that derives the
+namespace, package, resource class, or iOS framework name from the project path fails at
+configuration on a segment that is not a legal identifier. Check how it maps the path; if it
+copies segments, use the legal spelling for both path and directory (`:feature:accountsettings`),
+unless siblings already map directories with `projectDir`. Use type-safe project accessors only when settings enable them,
+and derive their spelling from the path. Check the destination and Gradle includes for collisions
+before creating files; extend an existing module only when that is the user's intent.
 
 One compatible example is enough; integrations do not require unanimous same-role siblings.
 Resolve disagreements using the closest applicable convention and actual consumer. When there is
@@ -66,111 +70,120 @@ silently omit a required integration or invent a framework version.
 
 ## 3. Create the base project
 
-Create the build file in the repository's Kotlin or Groovy DSL. Apply existing base/library,
-Compose, DI, and quality conventions for the selected profile. Where conventions do not supply
-configuration, adapt the reference build blocks using existing plugins and dependencies.
-Keep actual Android, JVM, JS, Wasm, native, and iOS targets and source-set hierarchy; do not
-replace KMP topology with generic targets. Match the installed AGP API (including Android-KMP
-library DSL where applicable), namespace, SDKs, and compiler setup.
-
-Register the project using current settings style, for example:
+Register the project in the current settings style, inside its category group:
 
 ```kotlin
 include(":<category>:<module-name>")
 ```
 
-Create this feature structure, adapted to resolved names/contracts (other profiles omit entries
-that do not apply):
+Create the build file in the repository's Kotlin or Groovy DSL. Apply the sibling's conventions in
+its order and add only the dependencies they do not supply. Where there are no conventions, adapt
+the reference build blocks. Keep actual Android, JVM, JS, Wasm, native, and iOS targets and
+source-set hierarchy; do not replace KMP topology with generic targets. Match the installed AGP
+API (including the Android-KMP library DSL), namespace, SDKs, and compiler setup.
+
+A Koin and Navigation 3 feature typically has this shape; follow the sibling where it differs:
 
 ```text
-MODULE_DIR/
-  build.gradle.kts                         # or build.gradle
-  MAIN/PACKAGE_DIR/
-    NameScreen.kt
-    NameScreenPreview.kt                  # or supported preview source set
-    di/NameModule.kt                      # only for a module-based DI mechanism
-    navigation/NameEntryBuilder.kt        # or NameNavigation.kt for NavGraphBuilder
-    navigation/NameEntryProvider.kt       # only when the project has this contract
-ROUTE_OWNER/ROUTE_MAIN/ROUTE_PACKAGE_DIR/
-  NameRoute.kt                            # may live in the feature instead
+<module-dir>/
+  build.gradle.kts                  # or build.gradle
+  <source-root>/<package-dir>/
+    <Name>Module.kt                 # DI module at the package root
+    <Screen>Screen.kt               # screen and its preview, one file
+    <Screen>EntryProvider.kt        # key → screen, plus the key's serializer
+    <Screen>ViewModel.kt            # only when the screen navigates or holds state
+    <Screen>Key.kt                  # only when no other module navigates to it
 ```
 
-Use the existing source layout, including package-root DI declarations when customary. Add platform
-files, manifests, or resources only when required by that target/plugin. Root ignore rules suffice
-when they cover build outputs. Never copy sibling business logic or leave unresolved template tokens.
+A feature with several screens gives each screen a subpackage holding its screen, entry provider,
+ViewModel, and key, and keeps the one DI module at the root. Other stacks fill the same roles with
+their own files: a Hilt module, a `NavGraphBuilder` extension, or a factory called from the app.
+Add platform files, manifests, or resources only when that target or plugin requires them. Root
+ignore rules suffice when they cover build outputs. Never copy sibling business logic or leave
+unresolved template tokens.
 
 ## 4. Create the screen and DI declaration
 
-For a feature, configure Compose and create `NameScreen(modifier: Modifier = Modifier)` with
-minimal visible content using existing UI components. Add a preview with the supported import,
-source set, and theme. Keep Android-only preview code out of common sources; unsupported preview
-tooling is a stated limitation, not a reason to omit the screen.
+For a feature, create a stateless `<Name>Screen(modifier: Modifier = Modifier)` with minimal
+visible content using the existing design system. When the screen navigates, it takes callbacks
+such as `onNavigateUp: () -> Unit`, placed before `modifier`, and never obtains a ViewModel or DI
+instance itself, so its preview runs without DI. Put the preview in the same file unless siblings keep previews elsewhere,
+using their preview import and theme. Keep Android-only preview code out of common sources;
+unsupported preview tooling is a stated limitation, not a reason to omit the screen.
 
-Create the repository's DI declaration: Koin annotation/DSL module, Hilt/Dagger module and actual
-component contract, or existing manual composition entry point. Wire navigation providers through
-DI when that is how the host discovers them. Follow the reference templates; an applied plugin
-does not constitute a DI declaration or graph registration. If the app has no DI mechanism, wire
-the screen and navigation directly from its composition root; an empty container or dummy binding
-is not a prerequisite.
+Create the repository's DI declaration: a Koin annotation or DSL module, a Hilt/Dagger module in
+the actual component, or the existing manual composition entry point. Register it in the graph's
+root, for Koin annotations the `includes` of the module the hosts start. An applied plugin or Gradle
+dependency registers nothing, and a missing registration still compiles. Add a ViewModel only when
+the screen navigates or holds state, following the repository's ViewModel and binding pattern. If
+the app has no DI mechanism, wire the screen and navigation directly from its composition root; an
+empty container or dummy binding is not a prerequisite.
 
 ## 5. Create navigation and connect consumers
 
-Create the route/destination in its established owner, then its screen builder and provider/serializer
-when required. For Nav3 use the existing typed `NavKey` contract; for Navigation Compose use the
-existing `NavGraphBuilder` and route style. Other frameworks fulfill destination → screen → host
-roles through their own APIs. A custom `EntryProvider` is not an AndroidX built-in interface.
-If no navigation exists, create the smallest host in the consumer and place the route there or in
-a shared contract module when dependency direction requires it. Register any new prerequisite
-module and its build dependencies. Use existing dependencies where possible; if a navigation
-library is needed, verify its version and target compatibility from authoritative release/docs
-information before adding it. The destination must be reachable through an actual navigation
-call, not just a declared route or unused screen.
+Create the key or destination where the code that navigates to it can see it: the shared
+navigation module when other modules navigate to it, the feature when only the feature does. For
+Navigation 3 use the existing `NavKey` contract and serialization; for Navigation Compose, the
+existing `NavGraphBuilder` and route style. Other frameworks fill the destination → screen → host
+roles through their own APIs. A custom `EntryProvider` is project-owned, not an AndroidX type.
 
-Add the feature dependency to the consumer and register its builder/provider with the actual host.
-For module-based DI, add the feature's module to the root/aggregate or generated discovery path;
-for manual composition, call the feature from the consumer's composition root. For decentralized
-discovery, still satisfy classpath, scanning/binding, and collection-consumption requirements.
-Make the registered destination callable through the existing or newly created navigation API.
-Add a visible menu, tab, or button only when requested or required by an existing navigation
-menu/registry; otherwise report that the route is registered with no UI entry action chosen.
-Preserve app layout, start destination, and back-stack behavior. Keep dependency direction acyclic:
-the shared route contract must not depend on its feature implementation.
+When hosts collect entry providers from DI, the feature's DI module is its navigation
+registration, and no host changes. Otherwise add the builder to the existing `entryProvider { }`,
+`NavHost { }`, or registry. Add the feature dependency to the consumer, with the correct
+configuration and source set. Preserve app layout, start destination, and back-stack behavior.
+Keep dependency direction acyclic: the shared navigation module must not depend on a feature.
+
+If no navigation exists and the project is Compose Multiplatform with Koin, set it up with
+[navigation3-multiplatform](../navigation3-multiplatform/SKILL.md), then resume here. Otherwise
+create the smallest host in the consumer from dependencies it already has; if a navigation library
+is needed, verify its version and target compatibility from authoritative release or docs
+information before adding it.
+
+The destination must be callable through the navigation API, for example
+`navigator.navigate(<Name>Key)`. Add a visible menu, tab, or button only when requested or required
+by an existing navigation menu/registry; otherwise report that the destination is registered with
+no UI entry action chosen.
 
 ## 6. Apply quality coverage
 
-Ensure the full feature scaffold has Detekt coverage through the existing convention, root policy,
-or direct plugin setup. Reuse config/baselines without duplication. Inspect whether tasks enable
-autoCorrect; use an existing nonmutating check or scope execution to the new module, never broad
-aggregate auto-correction. Review any resulting edits.
+Ensure the feature has Detekt coverage through the existing convention, root policy, or direct
+plugin setup, reusing config and baselines without duplication. Check whether the Detekt extension
+enables `autoCorrect`; run Detekt on the new module only (`:<project-path>:detekt`), never an
+aggregate auto-correcting run, and review any edits it makes.
 
 If existing policy cannot supply required coverage, resolve it rather than silently dropping it.
-Adding a needed DI convention or quality hook for the new feature is part of its scaffold;
-when that requires convention work, use
-[gradle-convention-plugin](../gradle-convention-plugin/SKILL.md), finish its checks, then resume here.
-Do not migrate unrelated modules or invent plugin versions.
+Adding a needed DI convention or quality hook for the new feature is part of its scaffold; when
+that requires convention work, use
+[gradle-convention-plugin](../gradle-convention-plugin/SKILL.md), finish its checks, then resume
+here. Do not migrate unrelated modules or invent plugin versions.
 
 ## 7. Verify and complete
 
-Run configuration first, then discover available tasks (substitute resolved paths):
+Configure the build, then discover the task names (substitute resolved paths):
 
 ```sh
 ./gradlew help
 ./gradlew :<project-path>:tasks --all
-./gradlew :<consumer-path>:tasks --all
 ```
 
-List consumer tasks when its wiring changed. Run the narrowest listed compile/assemble tasks for
-requested targets, applicable Detekt/lint tasks, and consumer compilation. Let compilation run
-KSP/KAPT dependencies; invoke processors separately only if that task omits required generation.
-Run existing DI graph/navigation smoke checks when available. Compilation alone does not prove
-runtime discovery; report that limit and any environment-blocked checks.
+Compile the new module, the consumer, and every host target, such as
+`:<android-app>:compileDebugKotlin`. Let compilation run KSP or KAPT; invoke processors separately
+only if that task omits required generation. Run the module's Detekt task and any existing DI
+graph or navigation smoke checks.
+
+A green compile is not DI proof. The Koin compiler plugin validates only compilations that start
+Koin, incremental compilation can skip a launcher whose own sources did not change, and a missing
+registration, a key left out of the saved-state serializers, or an unsatisfiable dependency in a
+library module all compile. Launch one host and navigate to the new destination; where that is not
+possible, report that compilation verified types, not runtime discovery. Report the exact commands
+and results.
 
 - [ ] Unique project is included and mapped to the created build/source tree.
 - [ ] DSL, packages, plugins, targets, source sets, and dependencies match the build.
-- [ ] Feature has a Compose screen and supported preview (or explicit tooling limitation).
-- [ ] DI module registration or direct consumer composition is complete.
-- [ ] Route, builder, required provider/serializer, and host integration are complete.
-- [ ] Consumer dependency and callable route are wired without cycles or unsolicited UI actions.
+- [ ] Feature has a stateless Compose screen and a preview (or an explicit tooling limitation).
+- [ ] DI module is registered in the graph root, or the consumer composes the feature directly.
+- [ ] Key, entry, serializer, and registration are complete, and the destination is callable.
+- [ ] Consumer dependency is wired without cycles or unsolicited UI actions.
 - [ ] Required Detekt policy covers the module without duplicated configuration.
 - [ ] No unresolved tokens, fake business types, or unrelated migrations remain.
 - [ ] Exact verification commands/results and runtime-check limitations are reported.
