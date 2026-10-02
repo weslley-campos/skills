@@ -1,4 +1,4 @@
-# Koin compiler setup and convention plugin
+# Koin compiler setup and convention plugins
 
 Use the Koin compiler plugin for Koin projects that meet its current Kotlin and Gradle
 requirements. It provides compile-time graph validation for annotations and the compiler DSL, and
@@ -7,68 +7,93 @@ generates no visible source files. Recheck the live
 [KSP migration guide](https://insert-koin.io/docs/migration/from-ksp-to-compiler-plugin/) before
 editing: compatibility requirements and the independently versioned compiler plugin can move.
 
-Create a `<prefix>.koin` convention plugin on the first module that needs Koin, rather than waiting
-for a second consumer to prove the repetition. A build that has already bootstrapped `build-logic`
-is already organized around more than one module of a kind; retrofitting a convention after several
-modules have each hand-declared the same compiler, dependency and source-set setup means migrating
-every one of them later, the exact rework `init` exists to avoid doing module-by-module. Koin's
-shared surface, the compiler plugin plus `koin-core` and `koin-annotations` in `commonMain`, is
-stable across consumers, so there is nothing a second module teaches that the first did not already
-show.
+## One convention, one branch per module type
 
-Keep the convention narrow. Only the compiler plugin and the two portable dependencies belong
-inside it. Compose, either navigation integration, tests, Android integration and WorkManager stay
-opt-in and module-local, declared directly by whichever modules use them, per "Select integrations
-per module" below — folding them into the base convention would force them onto a module that only
-wants the DI graph. A module that does not want Koin at all simply does not apply the convention; it
-sits beside the module-type convention, not inside it.
+Koin's setup is the same in every module: the compiler plugin, `koin-core` and `koin-annotations`.
+Only where the dependencies go differs. So use one `<prefix>.koin` convention. It applies the
+compiler plugin, then adds the dependencies according to the module type it finds:
+
+| Module type | Detected by | Dependencies |
+|---|---|---|
+| Kotlin Multiplatform: libraries, a Web launcher, a KMP Desktop launcher, the shared module iOS links | `KotlinMultiplatformExtension` | the `koin` bundle in `commonMain`, plus `koin-compose` and `koin-compose-viewmodel` when the module has the Compose compiler |
+| Kotlin JVM: a Desktop launcher on `org.jetbrains.kotlin.jvm` | `KotlinJvmProjectExtension` | the `koin` bundle through `implementation` |
+| Android application | `ApplicationExtension` | the `koin` bundle and `koin-android` through `implementation` |
+
+Each module type registers exactly one of these extensions, so exactly one branch runs per module:
+
+- With AGP 9's built-in Kotlin, an Android application registers `KotlinAndroidProjectExtension`,
+  not the JVM one.
+- The Android target of a KMP module, from the KMP Android library plugin, registers no
+  project-level `android` extension. The KMP branch covers it.
+
+The convention never applies Kotlin or Android itself. The module-type convention does that.
+Applying Kotlin Multiplatform from the Koin convention breaks every Kotlin JVM module, and applying
+the Android plugin would turn every consumer into an app.
+
+**Plugin order matters.** `findByType` and `hasPlugin` check once, when the convention is applied.
+So `<prefix>.koin` goes after the module-type convention, and after the Compose convention where the
+module has one. Listed first, it silently adds no Koin dependencies.
+
+Create the convention on the first module that needs Koin rather than waiting for a second consumer.
+The shared surface is stable. Retrofitting a convention after several modules have hand-declared the
+same compiler and dependency setup means migrating each of them later.
+
+## Identify the module types first
+
+Generate only the branches the build needs. List the module types that use Koin, or are about to:
+
+```bash
+rg -n "kotlin.multiplatform|kotlin.jvm|android.application|compose.compiler" build-logic --glob "*.kt"
+rg -n "alias\(libs\.plugins\." --glob "*.gradle.kts" .
+```
+
+Map each Koin module to a row of the table above through its module-type convention. Then trim the
+convention to match:
+
+- **No Kotlin JVM module:** drop the JVM branch and its import.
+- **No Android application, or one that does not start Koin:** drop the Android branch, and the
+  `koin-android` catalog entry unless a KMP `androidMain` still uses it.
+- **No Compose in the build** (no Compose compiler alias in the catalog): drop the Compose check. Its
+  accessor would not compile.
+- **iOS** has no Gradle launcher module. Koin for iOS lives in the shared KMP module's `iosMain`,
+  which the KMP branch already covers.
+- **A module type the table does not list**, such as a standalone `com.android.library`, gets a
+  branch of its own on its own extension type (`LibraryExtension`). It never borrows another type's
+  branch.
 
 ## Select integrations per module
 
 Survey the catalog and consuming modules first:
 
 ```bash
-rg -n "koin|compose|navigation|serialization|lifecycle|workmanager" \
+rg -n "koin|compose|navigation|lifecycle|workmanager" \
     --glob "libs.versions.toml" --glob "*.gradle.kts" --glob "AndroidManifest.xml" .
 ```
 
-The current question API does not support the old paged selection workflow. Use exactly two
-interactions:
+Use exactly two interactions:
 
 1. Show the relevant rows below as a markdown checklist, including whether each alias and
    prerequisite already exists. Ask for one free-text response such as `accept`, or
    `include: koin-compose; exclude: koin-annotations; add: ...`.
-2. Restate the final per-module dependency list and catalog edits, then ask one explicit
-   `Proceed` / `Adjust` confirmation before editing.
+2. Restate the final per-convention and per-module dependency lists and catalog edits, then ask one
+   explicit `Proceed` / `Adjust` confirmation before editing.
 
-| Dependency | Default | What it is for |
+| Dependency | Where it goes | What it is for |
 |---|---|---|
-| `koin-core` | `[x]` | Koin runtime and module DSL; use in `commonMain` wherever Koin runs |
-| `koin-annotations` | `[x]` | `@Singleton`, `@Module`, and `@ComponentScan` in `commonMain`; turn off for compiler-DSL-only modules |
-| `koin-compose` | `[ ]` | `KoinApplication { }`, `koinInject()`, and the Compose bridge in `commonMain`; Compose modules only |
-| `koin-compose-viewmodel` | `[ ]` | `koinViewModel()` in composables from `commonMain`; Compose ViewModel modules only |
-| `koin-compose-navigation3` | `[ ]` | Koin-backed `navigation<T>` entries and `koinEntryProvider` in `commonMain`; requires Navigation 3 plus the Kotlin serialization runtime and plugin |
-| `koin-compose-viewmodel-navigation` | `[ ]` | Koin ViewModel integration for Navigation 2 (`navigation-compose`) in `commonMain`; alternative to the Navigation 3 artifact |
-| `koin-core-viewmodel` | `[ ]` | `@KoinViewModel` outside Compose in `commonMain`; only where that API is used |
-| `koin-test` | `[ ]` | Koin test APIs in `commonTest`; compiler validation is preferred, with `verify()` reserved for classic/runtime DSL gaps |
-| `koin-android` | `[ ]` | Android context and `androidContext()` in KMP `androidMain`, or ordinary `implementation` in an Android module |
-| `koin-androidx-workmanager` | `[ ]` | Koin's WorkManager factory and worker definitions in KMP `androidMain`, or ordinary Android dependencies; also requires `koin-android`, `workManagerFactory()` startup configuration, and disabling WorkManager's default manifest initializer |
+| `koin-core` | `koin` bundle, every branch | Koin runtime and module DSL |
+| `koin-annotations` | `koin` bundle, every branch | `@Single`, `@Module`, `@ComponentScan`, `@Configuration`. The compiler plugin also reads other modules' definitions through these classes wherever `startKoin<T>` or `get<T>()` is called. Leave it out of the bundle only when the build uses no Koin annotations at all |
+| `koin-compose` | KMP branch, when the module has the Compose compiler | `koinInject()`, `KoinApplication { }`, and the Compose bridge |
+| `koin-compose-viewmodel` | same as `koin-compose` | `koinViewModel()` in composables |
+| `koin-compose-viewmodel-navigation` | module-local `commonMain` | Koin ViewModel integration for Navigation 2 (`navigation-compose`) |
+| `koin-core-viewmodel` | module-local `commonMain` | `@KoinViewModel` outside Compose; only where that API is used |
+| `koin-test` | module-local `commonTest` | Koin test APIs; compiler validation is preferred, with `verify()` reserved for classic/runtime DSL gaps |
+| `koin-android` | Android application branch; KMP `androidMain` only where `org.koin.android.*` APIs are used | `androidContext()` and the Android extensions |
+| `koin-androidx-workmanager` | Android application module | Koin's WorkManager factory and worker definitions; also requires `koin-android`, `workManagerFactory()` startup configuration, and disabling WorkManager's default manifest initializer |
 
-`koin-core` and `koin-annotations` default on because a module applying the `<prefix>.koin`
-convention already gets both from it; the checklist only asks about them for a module that
-intentionally does not apply the convention — a non-KMP module, or a KMP module opting out.
-Everything below those two rows is a genuine per-module choice, convention or not.
-
-The two navigation artifacts are alternatives. Inspect the module's existing navigation stack and
-offer only the matching integration. Before selecting `koin-compose-navigation3`, verify both a
-`kotlinx-serialization-*` runtime dependency and the `org.jetbrains.kotlin.plugin.serialization`
-plugin; its type-safe routes use `@Serializable`.
-
-Only the compiler plugin and the two portable dependencies belong in the shared convention. Compose,
-either navigation integration, tests, Android integration and WorkManager stay module-local
-regardless of how many modules exist, because they are not properties every consumer shares — fold
-one in and a module that does not want it inherits it anyway. Do not turn the checklist into one
-hardcoded dependency bundle.
+Navigation 3 needs no Koin artifact. Its own ViewModel entry decorator scopes ViewModels to each
+entry, and the entry resolves them with `koinViewModel()` from `koin-compose-viewmodel`. Do not offer
+`koin-compose-navigation3`. Offer `koin-compose-viewmodel-navigation` only to a module already on
+Navigation 2.
 
 Android-only artifacts never belong in `commonMain`. A KMP module puts them in `androidMain`; a
 single-platform Android module uses its ordinary dependency configuration.
@@ -87,10 +112,20 @@ koin-plugin = "<current-compatible-koin-compiler-plugin-version>"
 [libraries]
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+# Only when the build has Compose.
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
+
+[bundles]
+koin = ["koin-core", "koin-annotations"]
 
 [plugins]
 koin-compiler = { id = "io.insert-koin.compiler.plugin", version.ref = "koin-plugin" }
 ```
+
+Every branch adds `koin-core` and `koin-annotations` together, so the catalog names the pair once as
+a bundle, and each branch adds it with `implementation(libs.bundles.koin)`.
 
 Optional Koin integrations use the same `koin` version unless their current official setup says
 otherwise. Do not add a separate annotations version.
@@ -104,11 +139,11 @@ plugins {
 ```
 
 That root declaration is the whole classpath story for Koin, and it is the one edit that is not
-optional: the convention plugin applies `koin.compiler` by id, and the id resolves against the
-consuming build's plugin classpath, which the `apply false` line above owns.
+optional: the convention applies `koin.compiler` by id, and the id resolves against the consuming
+build's plugin classpath, which the `apply false` line above owns.
 
 Whether Koin also needs a `compileOnly` entry in `convention/build.gradle.kts` depends on what the
-convention does with it, and the rule is worth stating precisely because it is easy to get backwards:
+convention does with it, and the rule is easy to get backwards:
 
 - **Applying the plugin only** — the convention calls `apply(plugin = <id>)` and nothing else. No
   `compileOnly` entry is needed, unlike AGP, KGP and the Compose Gradle plugin. Those three are on
@@ -125,12 +160,324 @@ convention does with it, and the rule is worth stating precisely because it is e
 koin-compiler-gradle-plugin = { module = "io.insert-koin:koin-compiler-gradle-plugin", version.ref = "koin-plugin" }
 ```
 
-## Configuring the compiler plugin from the convention
+## The convention
 
-Build-wide compiler policy — logging and safety switches — is a good fit for the convention, because
-it is a property of how the build treats Koin rather than of one module's dependencies. The
-extension is `org.koin.compiler.plugin.KoinGradleExtension`, registered under the name
-`koinCompiler`:
+This is the full convention for a build with all three module types and Compose. Generate only the
+branches the survey found. It uses the `implementation` helper from `extensions/Dependencies.kt`
+(see `conventions.md`):
+
+```kotlin
+import com.android.build.api.dsl.ApplicationExtension
+import extensions.implementation
+import extensions.libs
+import org.gradle.api.Plugin
+import org.gradle.api.Project
+import org.gradle.kotlin.dsl.apply
+import org.gradle.kotlin.dsl.dependencies
+import org.gradle.kotlin.dsl.findByType
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+
+class KoinConventionPlugin : Plugin<Project> {
+    override fun apply(target: Project) = with(target) {
+        apply(plugin = libs.plugins.koin.compiler.get().pluginId)
+
+        extensions.findByType<KotlinMultiplatformExtension>()?.apply {
+            sourceSets.commonMain.dependencies {
+                implementation(libs.bundles.koin)
+                if (pluginManager.hasPlugin(libs.plugins.compose.compiler.get().pluginId)) {
+                    implementation(libs.koin.compose)
+                    implementation(libs.koin.compose.viewmodel)
+                }
+            }
+        }
+        extensions.findByType<KotlinJvmProjectExtension>()?.apply {
+            dependencies {
+                implementation(libs.bundles.koin)
+            }
+        }
+        extensions.findByType<ApplicationExtension>()?.apply {
+            dependencies {
+                implementation(libs.bundles.koin)
+                implementation(libs.koin.android)
+            }
+        }
+        Unit
+    }
+}
+```
+
+- **`findByType` returns `null`** when the module has no such extension, so each block runs only
+  on its own module type. Do not use `configure<T>`: it throws when `T` is missing, so
+  `configure<ApplicationExtension>` would fail on every non-Android module.
+- **`dependencies { }` in the JVM and Android blocks is the project's.** Neither
+  `KotlinJvmProjectExtension` nor `ApplicationExtension` has a `dependencies` member.
+  `KotlinMultiplatformExtension` does: the experimental top-level `kotlin { dependencies { } }`. So
+  the KMP block goes through `sourceSets.commonMain.dependencies` and never through a bare
+  `dependencies { }`.
+- **`Unit` closes the expression body.** `with` returns its last expression, and `?.apply` returns
+  the extension. Keep it when trimming branches.
+- **The Compose check** reads the catalog's Compose compiler alias. Reuse the existing alias if it is
+  named differently, and drop the check when the build has no Compose.
+- **The extension types come from AGP and KGP.** Both are already `compileOnly` in
+  `convention/build.gradle.kts` for the module-type conventions. The convention references no Koin
+  type, so it needs no Koin artifact there.
+
+## Registration and consumers
+
+```toml
+[plugins]
+<prefix>-koin = { id = "<prefix>.koin" }
+```
+
+```kotlin
+gradlePlugin {
+    plugins {
+        register("koin") {
+            id = libs.plugins.<prefix>.koin.get().pluginId
+            implementationClass = "KoinConventionPlugin"
+        }
+    }
+}
+```
+
+The `<prefix>.koin` id cannot coexist with ids that extend it, such as `<prefix>.koin-library` or
+`<prefix>.koin-android`. The catalog turns both `.` and `-` into accessor segments, so
+`libs.plugins.<prefix>.koin` becomes a group instead of a plugin, and `build-logic` stops compiling.
+A build that already has per-type Koin conventions replaces them in one change: delete their
+classes, registrations and catalog ids, add `<prefix>.koin`, and switch every consumer's alias.
+
+Every Koin module applies the convention after its module-type convention, and after its Compose
+convention where it has one. It declares no Koin compiler alias and no `koin-core`,
+`koin-annotations` or `koin-android` lines of its own. Show only the module types the build has:
+
+```kotlin
+// KMP library module
+plugins {
+    alias(libs.plugins.<prefix>.multiplatform.library)
+    alias(libs.plugins.<prefix>.compose.library)
+    alias(libs.plugins.<prefix>.koin)
+}
+```
+
+```kotlin
+// Kotlin JVM Desktop launcher
+plugins {
+    alias(libs.plugins.<prefix>.jvm.application)
+    alias(libs.plugins.<prefix>.koin)
+}
+```
+
+```kotlin
+// Android application module
+plugins {
+    alias(libs.plugins.<prefix>.android.application)
+    alias(libs.plugins.<prefix>.koin)
+}
+```
+
+Follow the four catalog, registration and root-classpath edits in `SKILL.md`.
+
+## Starting Koin on each platform
+
+Every app entry point starts Koin once, before the first injection, with the root module as the type
+argument. Tag that module `@Configuration`:
+
+```kotlin
+@Configuration
+@Module(includes = [FeatureModule::class])
+@ComponentScan
+class AppModule
+```
+
+`startKoin<AppModule>` is the typed start from `org.koin.plugin.module.dsl`, shipped in `koin-core`
+(`org.koin.core.context.startKoin` has no type parameter). The compiler plugin rewrites it where it
+is called, so the module that calls it must apply `<prefix>.koin`. That call is also the
+compilation's Koin entry point, so no `@KoinApplication` class is needed.
+
+The rewrite does not load the type argument as a module. It loads the modules tagged
+`@Configuration`:
+
+- **`@Module`** only marks a class as a Koin module. It is loaded when something references it:
+  another module's `includes`, or an explicit module list.
+- **`@Configuration`** marks a module that the typed start loads automatically. Tag only the root,
+  because its `includes` bring in the rest.
+
+Without `@Configuration` on `AppModule`, the call still compiles, and so does every module. Koin then
+starts with no modules, and the first injection throws `NoDefinitionFoundException` at runtime.
+
+To name the modules explicitly instead, use one of these. Neither needs `@Configuration`:
+
+- `@KoinApplication(modules = [AppModule::class]) object App` with `startKoin<App>()`
+- the untyped `startKoin { module<AppModule>() }`
+
+Every launcher repeats that list, so prefer `@Configuration` unless the build already starts Koin
+one of these ways.
+
+Start Koin outside any composable lambda. Composition can re-run that lambda, and a second
+`startKoin` throws. In the launchers below, `App()` stands for the shared root composable.
+
+### Android
+
+Start Koin in the `Application` subclass, registered in the manifest with
+`android:name=".MainApplication"`:
+
+```kotlin
+import android.app.Application
+import org.koin.android.ext.koin.androidContext
+import org.koin.plugin.module.dsl.startKoin
+
+class MainApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        startKoin<AppModule> {
+            androidContext(this@MainApplication)
+        }
+    }
+}
+```
+
+### Web (Wasm)
+
+The web launcher is a KMP module, so the KMP branch of `<prefix>.koin` covers it. It starts Koin at
+the top of its `main()`:
+
+```kotlin
+plugins {
+    alias(libs.plugins.<prefix>.web.application)
+    alias(libs.plugins.<prefix>.koin)
+}
+```
+
+```kotlin
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.window.ComposeViewport
+import kotlinx.browser.document
+import org.koin.core.logger.Level
+import org.koin.plugin.module.dsl.startKoin
+
+@OptIn(ExperimentalComposeUiApi::class)
+fun main() {
+    startKoin<AppModule> {
+        printLogger(Level.DEBUG)
+    }
+
+    ComposeViewport(viewportContainer = document.body!!) {
+        App()
+    }
+}
+```
+
+### Desktop (JVM)
+
+The Desktop launcher applies `<prefix>.koin` like any other module. A launcher on the Kotlin JVM
+plugin gets the JVM branch, and a KMP launcher gets the KMP branch. It starts Koin at the top of
+`main()`, before `application { }`:
+
+```kotlin
+plugins {
+    alias(libs.plugins.<prefix>.jvm.application)
+    alias(libs.plugins.<prefix>.koin)
+}
+```
+
+```kotlin
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import org.koin.plugin.module.dsl.startKoin
+
+fun main() {
+    startKoin<AppModule>()
+    application {
+        Window(onCloseRequest = ::exitApplication, title = "<App name>") {
+            App()
+        }
+    }
+}
+```
+
+A dependency on the shared module is not enough for the launcher. The compiler plugin rewrites
+`startKoin<T>` and validates `get<T>()` in the module that calls them, and it reads the definitions
+from other modules through `koin-annotations` on that module's classpath. The JVM branch brings both
+the plugin and the annotations.
+
+### iOS
+
+Use the untyped start, with the compiler-DSL `module<T>()`, in the shared module's `iosMain`:
+
+```kotlin
+// <shared>/src/iosMain/kotlin/<package>/Koin.kt
+import org.koin.core.context.startKoin
+import org.koin.plugin.module.dsl.module
+
+fun initKoin() {
+    startKoin { module<AppModule>() }
+}
+```
+
+Call it from the SwiftUI `App` initializer, before any Compose view controller is created:
+
+```swift
+import SwiftUI
+import <SharedFramework>
+
+@main
+struct iOSApp: App {
+    init() {
+        KoinKt.doInitKoin()
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+Swift sees a top-level Kotlin function as a static method on a class named after its file
+(`Koin.kt` becomes `KoinKt`). Kotlin/Native also prefixes functions whose names start with `init`
+with `do`, so the call is `doInitKoin()`. Renaming the file changes the Swift call.
+
+Do not use typed startup here. With compiler plugin 1.2.1, a typed start in the iOS compilation
+(`startKoin<AppModule>()` or a `@KoinApplication`) makes the plugin validate `get<T>()` call sites
+there. It then reports `KOIN-D002 Missing definition` for a valid lookup of a definition from another
+Gradle module, such as a `MainViewController` reading an aggregator. JVM and Wasm accept the same
+lookup. The untyped start loads the same modules without triggering it. Recheck this when upgrading
+the plugin.
+
+## Direct declarations, for what stays outside a convention
+
+A module that cannot use the convention — one whose module type has no branch, or one that
+deliberately opts out — wires Koin directly. It keeps its existing module-type plugin, adds the
+compiler plugin, and declares only what it uses:
+
+```kotlin
+plugins {
+    alias(libs.plugins.<existing-kmp-module-type-plugin>)
+    alias(libs.plugins.koin.compiler)
+}
+
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation(libs.koin.core)
+            implementation(libs.koin.annotations)
+        }
+    }
+}
+```
+
+A non-KMP module does the same with its ordinary `dependencies { implementation(...) }`. Do not copy
+Android, Compose, navigation, test or WorkManager dependencies from one module into another merely
+for symmetry.
+
+## Configuring the compiler plugin (optional)
+
+The convention above only applies the plugin, which is enough for most builds and needs no
+`compileOnly` entry. Configure the extension from a convention only when the build has a policy to
+set — most often `logSeverity = "info"` for a build using `allWarningsAsErrors`. The extension is
+`org.koin.compiler.plugin.KoinGradleExtension`, registered under the name `koinCompiler`:
 
 ```kotlin
 import org.gradle.kotlin.dsl.assign
@@ -154,10 +501,8 @@ only with an explicit `import org.gradle.kotlin.dsl.assign`. Without that import
 not resolve, and the error points at the property rather than at the missing import. `userLogs.set(true)`
 is the equivalent that needs no import; pick one and keep the file consistent.
 
-Read the defaults off `KoinGradleExtension` in the version actually resolved, rather than off the
-published options table: the documented table has trailed the extension before. At the time of
-writing the table lists six options while the extension exposes ten, and the four it omits include
-`logSeverity`, which governs how loud two of the documented six are.
+Read the defaults off `KoinGradleExtension` in the version actually resolved; the published options
+table has trailed the extension before.
 
 | Field | Default | What it does |
 |---|---|---|
@@ -180,172 +525,38 @@ preference; `strictSafetyForceOff = true` is the real opt-out, and only for a co
 Enabling it costs that module its incremental-compilation cache on every build, so leave it to the
 detector unless there is a reason not to.
 
-Two of these interact in a way that surprises people. `userLogs = true` emits a line per detected
-component, and `logSeverity` defaults to `"warning"`, so those lines arrive as compiler warnings on
-every compilation of every module — which is noise on a large graph, and a hard failure on any build
-using `allWarningsAsErrors` or `-Werror`. Setting `logSeverity = "info"` demotes them and leaves real
-`KOIN-Dxxx` diagnostics at their own severity. Turning `userLogs` on without deciding `logSeverity`
-is the single most common way this block goes wrong.
+`userLogs = true` emits a line per detected component, and `logSeverity` defaults to `"warning"`, so
+those lines arrive as compiler warnings on every compilation of every module — noise on a large graph,
+and a hard failure under `allWarningsAsErrors` or `-Werror`. Setting `logSeverity = "info"` demotes
+them and leaves real `KOIN-Dxxx` diagnostics at their own severity. Never turn `userLogs` on without
+deciding `logSeverity`.
 
-Whether to write out the fields that already match their defaults is a real choice, and it splits by
-where the block lives. In a module build file, restating a default is noise. In a convention plugin
-it is defensible as pinning: the convention is where build-wide policy is declared, and a value
-written down cannot be changed underneath the build by an upstream default that moves in a later
-Koin release. Pinning costs a line and buys a diff when that happens. Choose one and apply it to the
-whole block, so a reader can tell which lines are decisions — and leave `strictSafety` out of it
-either way, for the reason above.
+In a convention, restating a default is defensible as pinning: a value written down cannot be
+changed underneath the build by an upstream default that moves in a later Koin release. Either pin
+every field or none, so a reader can tell which lines are decisions — and leave `strictSafety` out
+either way.
 
-Note what the compiler plugin does when a module has no Koin entry point yet. It applies, runs, and
-reports `[Koin] compile-safety validation skipped — no Koin entry point in this compilation`.
-Wiring the plugin in is therefore not the same as getting compile-time graph validation: the
-validation only starts doing work once the module actually declares a Koin graph. Do not report the
-setup as "validated by the compiler" on the strength of a green `assemble` alone.
+## WorkManager, only when requested
 
-## The KMP convention
+This section applies only when `koin-androidx-workmanager` was selected in the checklist. Without
+that dependency, do not add `workManagerFactory()` or the manifest change: the factory is an
+extension from that artifact and does not resolve without it.
 
-Register a `<prefix>.koin` convention plugin. It applies Kotlin Multiplatform and the Koin compiler
-plugin, then adds only the two portable dependencies genuinely shared by every KMP consumer:
-`koin-core` and `koin-annotations` in `commonMain`. Keep Android, Compose, navigation, test and
-WorkManager dependencies module-local — see "Select integrations per module" above.
-
-```kotlin
-import extensions.configureKoinDependencies
-import extensions.libs
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.kotlin.dsl.apply
-import org.gradle.kotlin.dsl.assign
-import org.gradle.kotlin.dsl.configure
-import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-import org.koin.compiler.plugin.KoinGradleExtension
-
-class KoinConventionPlugin : Plugin<Project> {
-    override fun apply(target: Project) = with(target) {
-        apply(plugin = libs.plugins.kotlin.multiplatform.get().pluginId)
-        apply(plugin = libs.plugins.koin.compiler.get().pluginId)
-
-        extensions.configure<KotlinMultiplatformExtension>(::configureKoinDependencies)
-
-        extensions.configure<KoinGradleExtension> {
-            userLogs = true
-            logSeverity = "info"
-        }
-    }
-}
-```
-
-In `extensions/Koin.kt`:
-
-```kotlin
-package extensions
-
-import org.gradle.api.Project
-import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
-
-internal fun Project.configureKoinDependencies(extension: KotlinMultiplatformExtension) {
-    extension.sourceSets.apply {
-        commonMain.dependencies {
-            implementation(libs.koin.core)
-            implementation(libs.koin.annotations)
-        }
-    }
-}
-```
-
-```toml
-[plugins]
-<prefix>-koin = { id = "<prefix>.koin" }
-```
-
-```kotlin
-gradlePlugin {
-    plugins {
-        register("koin") {
-            id = libs.plugins.<prefix>.koin.get().pluginId
-            implementationClass = "KoinConventionPlugin"
-        }
-    }
-}
-```
-
-Consuming KMP modules apply this convention instead of separately applying Kotlin Multiplatform and
-the Koin compiler plugin. Follow the four catalog, registration and root-classpath edits in
-`SKILL.md`.
-
-## Direct declarations, for what stays outside the convention
-
-A module that is not KMP, or a KMP module that deliberately does not want the shared graph, opts
-into Koin without the convention. The consuming module keeps its existing module-type plugin; Koin
-does not select or apply the module type.
-
-A KMP module that skips the convention places portable dependencies in `commonMain` and looks up
-Android-specific source sets defensively:
-
-```kotlin
-plugins {
-    alias(libs.plugins.<existing-kmp-or-base-plugin>)
-    alias(libs.plugins.koin.compiler)
-}
-
-kotlin {
-    sourceSets {
-        commonMain.dependencies {
-            implementation(libs.koin.core)
-            implementation(libs.koin.annotations)
-        }
-        // Only when this KMP module uses Android Koin APIs.
-        findByName("androidMain")?.dependencies {
-            implementation(libs.koin.android)
-        }
-    }
-}
-```
-
-An Android application uses the application or base convention it already has and ordinary
-dependency configurations:
-
-```kotlin
-plugins {
-    alias(libs.plugins.<existing-android-application-or-base-plugin>)
-    alias(libs.plugins.koin.compiler)
-}
-
-dependencies {
-    implementation(libs.koin.core)
-    implementation(libs.koin.annotations)
-    implementation(libs.koin.android)
-}
-```
-
-Remove any row the module does not use. In particular, do not copy Android, Compose, navigation,
-test or WorkManager dependencies from one module into another merely for symmetry.
-
-## WorkManager requires runtime setup
-
-`koin-androidx-workmanager` is not sufficient by itself. A participating Android application needs
-both Android artifacts:
+The artifact is not sufficient by itself. `koin-android` already comes from the Android application
+branch of `<prefix>.koin`, so the Android application adds only:
 
 ```kotlin
 dependencies {
-    implementation(libs.koin.android)
     implementation(libs.koin.androidx.workmanager)
 }
 ```
 
-Enable Koin's worker factory during application startup. Typed startup remains valid:
+Add Koin's worker factory to the existing typed startup:
 
 ```kotlin
-@KoinApplication(modules = [AppModule::class])
-class App
-
-class MainApplication : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        startKoin<App> {
-            androidContext(this@MainApplication)
-            workManagerFactory()
-        }
-    }
+startKoin<AppModule> {
+    androidContext(this@MainApplication)
+    workManagerFactory()
 }
 ```
 
@@ -375,70 +586,38 @@ WorkManager creation. Keep the
 [official WorkManager setup](https://insert-koin.io/docs/reference/koin-android/workmanager/) beside
 this checklist because AndroidX initializer details can change.
 
-## Navigation 3 prerequisites and API
-
-`koin-compose-navigation3` primarily adds `Module.navigation<T>`, scoped navigation entries and
-`koinEntryProvider`; ViewModels can be injected inside an entry, but ViewModel scoping is not the
-artifact's principal role.
-
-Before adding it, confirm all three pieces in the consuming module:
-
-```kotlin
-plugins {
-    alias(libs.plugins.kotlin.serialization)
-}
-
-dependencies {
-    implementation(libs.koin.compose.navigation3)
-    implementation(libs.kotlinx.serialization.core)
-}
-```
-
-The alias names are illustrative; reuse the repository's existing aliases and verify current
-coordinates against the
-[official Navigation 3 integration](https://insert-koin.io/docs/reference/koin-compose/navigation3/).
-If either the runtime or serialization plugin is absent, the integration selection is incomplete.
-
 ## Delegating ViewModels and circular dependencies
 
-When `KOIN-D004` reports `HomeViewModel → HomeViewModel`, inspect annotation bindings before
-changing Gradle dependencies. Both an app and a feature depending on `core.navigation` is a valid
-project graph; the diagnostic describes Koin's object graph. A Kotlin import alone does not create
-a DI binding.
+When `KOIN-D004` reports `<Screen>ViewModel → <Screen>ViewModel`, inspect annotation bindings before
+changing Gradle dependencies. The diagnostic describes Koin's object graph, not the Gradle module
+graph: an app and a feature both depending on a shared navigation module is valid, and a Kotlin
+import alone creates no DI binding.
 
-In `ViewModel(), Navigator by navigator`, `ViewModel` is a superclass and `Navigator` is an
-implemented interface. The problem does not require multiple interfaces: the class both consumes
-and implements `Navigator`. Plain `@KoinViewModel` automatically binds implemented interfaces,
-making the ViewModel another provider of `Navigator` alongside `NavigatorImpl`. If resolution
-selects the ViewModel for its own constructor parameter, it creates a self-cycle.
+In `ViewModel(), Navigator by navigator`, the class both consumes and implements `Navigator`. Plain
+`@KoinViewModel` automatically binds implemented interfaces, so the ViewModel becomes another
+provider of `Navigator` beside the real one. If resolution selects the ViewModel for its own
+constructor parameter, it creates a self-cycle.
 
-When creating or updating a ViewModel that constructor-injects and delegates an interface, bind
-explicitly to that same concrete ViewModel unless additional DI bindings are intentional:
+When creating or updating a ViewModel that constructor-injects and delegates an interface, bind it
+explicitly to its own class unless the extra binding is intended:
 
 ```kotlin
-@KoinViewModel(binds = [HomeViewModel::class])
-class HomeViewModel(
+@KoinViewModel(binds = [<Screen>ViewModel::class])
+class <Screen>ViewModel(
     val navigator: Navigator,
 ) : ViewModel(), Navigator by navigator
 ```
 
-Match the binding to the annotated class: `AuthViewModel` uses
-`@KoinViewModel(binds = [AuthViewModel::class])`. Keep the real navigator provider's
-`@Single(binds = [Navigator::class])` binding. Explicit self-binding replaces automatic interface
-binding while preserving constructor injection and delegation. `binds = []` also suppresses
-automatic bindings, but prefer explicit self-binding for this pattern. `Lazy<Navigator>` does not
-remove an unintended binding.
+Keep the real provider's plain `@Single`, which binds `Navigator` automatically. Explicit
+self-binding replaces automatic interface binding while preserving constructor injection and
+delegation. `binds = []` also suppresses automatic bindings, but self-binding states the intent.
+`Lazy<Navigator>` does not remove an unintended binding.
 
-**Only one ViewModel may trigger the diagnostic.** In compiler plugin 1.2.1, the cycle checker uses
-`putIfAbsent` when mapping interface bindings to providers, so discovery order in the assembled
-Koin graph affects which provider it checks. A sibling ViewModel can retain an unintended
-`Navigator` binding without producing the same error. Treat this selection behavior as
-version-specific, not as a runtime ordering guarantee or proof that every binding is intentional.
-
-Inspect the assembled modules and generated bindings when explaining an asymmetry between
-ViewModels. Separate the change proven necessary for the reported failure from any cleanup of
-sibling bindings, and compile the application entry point that reported the error (for example,
-`:androidApp:compileDebugKotlin`); compiling a library without a Koin entry point is insufficient.
+Sibling ViewModels with the same unintended binding can compile cleanly: in compiler plugin 1.2.1 the
+cycle checker keeps only the first provider it discovers per interface. Fix them too, but report that
+cleanup separately from the change the reported error required. Verify by compiling the module that
+holds the Koin entry point (for example `:<android-app>:compileDebugKotlin`); a library without an
+entry point skips graph validation.
 
 See Koin's [automatic or specific binding documentation](https://insert-koin.io/docs/reference/koin-annotations/definitions/#automatic-or-specific-binding)
 and the [delegation issue](https://github.com/InsertKoinIO/koin-compiler-plugin/issues/12).
@@ -449,17 +628,21 @@ Treat the old KSP path as input to remove, not as a parallel fallback:
 
 - Confirm the build meets the current Koin compiler-plugin, Kotlin compiler and Gradle wrapper
   requirements.
-- Add the compiler plugin alias and its root `apply false`, then wire it in through the `<prefix>.koin`
-  convention for every participating KMP module (or directly, for a module that stays outside it).
+- Add the compiler plugin alias and its root `apply false`, then wire it in through `<prefix>.koin`
+  (or directly, for a module whose type has no branch).
 - Remove `koin-ksp-compiler`, Koin KSP arguments, generated source directories, metadata helpers and
   manual task dependencies. Remove the KSP plugin and catalog/version entries only when no other
   processor uses them.
-- Keep `koin-annotations` only in annotation-using modules, and change it to `version.ref = "koin"`.
+- Change `koin-annotations` to `version.ref = "koin"`. It now reaches every Koin module through the
+  `koin` bundle, so delete the module-level `koin-annotations` lines.
 - Change `org.koin.android.annotation.KoinViewModel` imports to
   `org.koin.core.annotation.KoinViewModel` where present.
-- Remove `org.koin.ksp.generated.*` imports and generated `.module` references. Add an
-  `@KoinApplication(modules = [...])` entry point and use typed `startKoin<App>()`, retaining existing
-  configuration such as `androidContext` and `workManagerFactory()`.
+- Remove `org.koin.ksp.generated.*` imports and generated `.module` references. Tag the root module
+  `@Configuration` and replace `<App>KoinApp.startKoin { modules(AppModule().module) }` with the
+  typed `startKoin<AppModule> { }` from `org.koin.plugin.module.dsl`. Carry over the rest of the
+  startup configuration as-is, for example `androidContext` or `printLogger`. Delete the
+  `@KoinApplication` object, since nothing references it anymore. iOS keeps the untyped start; see
+  **Starting Koin on each platform**. Keep `workManagerFactory()` only where it was already there.
 - When adopting the compiler DSL, import `org.koin.plugin.module.dsl.*` and replace constructor
   references such as `singleOf(::Service)` with typed forms such as `single<Service>()`. Leave
   classic DSL code alone when it is outside the migration.
@@ -491,3 +674,12 @@ cannot hide missing wiring:
 The included-build check validates registration, `help` catches plugin/classpath mistakes, and
 `assemble` proves the compiler plugin and dependencies reach every participating source set. Do not
 claim the KSP migration is complete until the clean assemble passes.
+
+A green `assemble` is not the same as compile-time graph validation. In a compilation with no Koin
+entry point the plugin applies, runs, and reports `[Koin] compile-safety validation skipped — no Koin
+entry point in this compilation`; validation only does work in the module that declares the graph.
+Do not report the setup as "validated by the compiler" on the strength of library modules alone.
+
+Launch every app once after wiring or changing the startup. A typed `startKoin<AppModule>` whose
+root module lacks `@Configuration` compiles cleanly and crashes at the first injection; only a run
+shows it.

@@ -198,7 +198,7 @@ see "Things that look shared but are not" in `references/migration.md`.
 - `references/conventions.md` — plugin and extension templates per module type, and AGP 8 vs 9
 - `references/targets.md` — classify KMP module roles and preserve JVM/Desktop, JS, Wasm and native targets
 - `references/compose.md` — the Compose convention plugin, whose dependency list is asked, not assumed
-- `references/koin.md` — add the Koin compiler plugin, including migration cleanup from KSP
+- `references/koin.md` — one Koin convention with a branch per module type the build has, starting Koin on each platform, and migration cleanup from KSP
 - `references/detekt.md` — add a version-aware, build-wide Detekt quality convention
 - `references/migration.md` — what to delete from a module, what must stay, with before/after
 - `references/troubleshooting.md` — error message → cause → fix

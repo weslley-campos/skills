@@ -79,9 +79,15 @@ the Android plugin was not applied first, so check the order inside the conventi
 ### `Extension of type 'KotlinMultiplatformExtension' does not exist`
 
 The convention plugin configured the multiplatform extension before applying the multiplatform
-plugin. Order inside `apply(target)` matters: apply the plugins, then configure.
+plugin. Order inside `apply(target)` matters: apply the plugins, then configure. A convention that
+spans module types, such as Koin, must not apply the multiplatform plugin itself: check with
+`extensions.findByType<KotlinMultiplatformExtension>()` instead of `configure<T>`.
 
 ### `invalid source release: 24` (or any version) building `build-logic`
+
+Also seen from `validatePlugins` as `has been compiled by a more recent version of the Java Runtime
+(class file version 65.0), this version of the Java Runtime only recognizes class file versions up
+to 61.0`.
 
 `build-logic/convention/build.gradle.kts` targets a JDK newer than the daemon compiling it. First
 confirm the project's Gradle daemon, toolchain and CI JDK requirement, then run Gradle with that JDK
@@ -108,3 +114,46 @@ Usually one of: a different JDK (see `invalid source release` above), a fresh ca
 missing repository in `build-logic/settings.gradle.kts` — it has its own `repositories` block and
 inherits nothing — or `build-logic/build/` having been committed. Check `.gitignore` covers
 `build-logic/**/build/`.
+
+## Koin
+
+### `NoDefinitionFoundException` at the first injection, after a green build
+
+The app starts Koin with the typed `startKoin<AppModule>()`, and `AppModule` has `@Module` but not
+`@Configuration`. The typed start loads only `@Configuration` modules, so it compiles to an empty
+module list. Tag the root module `@Configuration`; see **Starting Koin on each platform** in
+`koin.md`.
+
+### `Cannot add extension with name 'kotlin', as there is an extension already registered with that name`
+
+The Koin convention applies the multiplatform plugin on a module that already applied `kotlin.jvm`
+or Android. The convention applies only the Koin compiler plugin and branches on the extension the
+module-type convention registered.
+
+### `Unresolved reference 'pluginId'` on `libs.plugins.<prefix>.koin`
+
+An older id such as `<prefix>.koin-library` or `<prefix>.koin-android` is still in the catalog, so
+`<prefix>.koin` became an accessor group. Delete the old ids, classes and registrations in the same
+change.
+
+### `org.koin` imports unresolved in a module that applies `<prefix>.koin`
+
+The module applies `<prefix>.koin` before its module-type or Compose convention. `findByType` and
+`hasPlugin` see only what is already applied, so the Koin branch was skipped without an error. Move
+the alias after them, then confirm with
+`./gradlew :<module>:dependencies --configuration <compileClasspath> | grep koin`.
+
+### `KOIN-D002 Missing definition` at a launcher's `startKoin<T>` or `get<T>()`
+
+The launcher depends on the shared module but has neither the Koin compiler plugin nor
+`koin-annotations`, so the plugin cannot read the shared module's definitions. Apply `<prefix>.koin`
+to the launcher.
+
+If this appears only in the iOS compilation with a typed start, it is a compiler-plugin false
+positive. iOS uses the untyped start; see **iOS** in `koin.md`.
+
+### `Android Source Set Used Without an Android Target`
+
+A convention added `androidMain` dependencies to a module without an Android target, such as a Web
+launcher. Keep Android-only Koin artifacts in the Android application branch, or in `androidMain`
+only for modules that declare an Android target.
