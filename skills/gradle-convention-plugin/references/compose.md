@@ -35,8 +35,8 @@ when paged like this:
 
 | Page | Options, one dependency each | Default |
 |---|---|---|
-| Adaptive layout | `material3-adaptive`, `material3-adaptive-navigation-suite`, `material3-window-size-class`, `material3-icons-extended` | all off |
-| Navigation 3 | the runtime, the display, the lifecycle-viewmodel integration, the adaptive integration | all on |
+| Adaptive layout | `material3-adaptive`, `material3-adaptive-navigation-suite`, `material3-window-size-class`, the navigation3 adaptive integration | all off |
+| Navigation 3 | the runtime, the display, the lifecycle-viewmodel integration | all on |
 | Test | `kotlin-test`, `compose-ui-test`, the JVM desktop runtime for `jvmTest` | all on |
 | Optional basics | `ui-util`, `animation`, `components-resources`, and the two lifecycle integrations as one option | all on |
 
@@ -83,22 +83,27 @@ Compose module. Free text at any pass is where a row nobody anticipated gets add
 | `compose-ui-tooling-preview` | `[x]` | the `@Preview` annotation itself, needed wherever a preview is declared |
 | `lifecycle-runtime-compose` | `[x]` | `collectAsStateWithLifecycle`, `LocalLifecycleOwner`, and the lifecycle-aware effects |
 | `lifecycle-viewmodel-compose` | `[x]` | `viewModel()` from a composable, with its scope handled |
-| `compose-ui-tooling` | `[x]` | `@Preview` *rendering* in the IDE; belongs on the Android source set only, never in `commonMain` |
+| `compose-ui-tooling` | `[x]` | `@Preview` *rendering* in the IDE; Android runtime classpath only, never `commonMain` — step 5 picks the configuration |
 | `kotlin-test` | `[x]` | `@Test` and the assertion functions, in `commonTest` |
 | `compose-ui-test` | `[x]` | semantics matchers, test rules, and `runComposeUiTest` |
 | Compose desktop for the current OS | `[x]` | the Skiko and AWT runtime `runComposeUiTest` needs on the JVM; `jvmTest` only, and only when the build has a JVM target. Comes off the Compose extension, so it needs no catalog entry |
 | navigation3 runtime | `[x]` | the back stack as an ordinary snapshot-state list the caller owns, and the entries that map a key to its content |
 | navigation3 ui | `[x]` | `NavDisplay`, which renders the top of that back stack, with its transitions and predictive back. A separate artifact from the runtime, so a module that only holds keys can take one without the other |
 | navigation3 lifecycle-viewmodel integration | `[x]` | a ViewModel scoped to a navigation entry rather than to the screen that shows it |
-| navigation3 adaptive integration | `[x]` | scene strategies over that back stack: list-detail and supporting-pane once the window is wide enough |
 | `material3-adaptive` | `[ ]` | adaptive scaffolds and the primitives for window size and device posture |
 | `material3-adaptive-navigation-suite` | `[ ]` | one component that switches between navigation bar, rail and drawer by window size |
 | `material3-window-size-class` | `[ ]` | the size buckets to branch a layout on, without the scaffolds above |
-| `material3-icons-extended` | `[ ]` | the full Material icon set. Large in every module that gets it, and a handful of named icons is cheaper to declare by hand |
+| navigation3 adaptive integration | `[ ]` | scene strategies over the navigation3 back stack: list-detail and supporting-pane once the window is wide enough. Published with the adaptive family and pulls `material3-adaptive` in with it |
 
 The default column is a starting point, not a house style: the basics plus the test pair plus
 navigation, because those are what a module drawing screens needs before anyone asks. The adaptive
-family stays unchecked because it is a layout strategy a build adopts deliberately, not a default.
+family, including its navigation3 integration, stays unchecked because it is a layout strategy a
+build adopts deliberately, not a default. Drop any row the base convention already adds —
+`kotlin-test` in `commonTest` is the usual one — rather than declaring it twice.
+
+`material-icons-extended` is deliberately absent: it is frozen at its last release and adds the whole
+icon set to every module that takes it. A handful of icons belongs in `composeResources/` as vector
+drawables instead.
 
 Four notes that belong in the message rather than in a later surprise:
 
@@ -133,9 +138,13 @@ only this one:
   Where the existing alias is camelCase, say so and leave it alone; renaming touches every module that
   references it, and that is the separate job in `references/migration.md`.
 - **The alias is missing** — add it, taking the version from a `version.ref` that already exists rather
-  than inventing a number. Artifacts published as one release share one ref: the whole
-  `org.jetbrains.compose.*` set takes the Compose ref, `kotlin-test` takes the Kotlin ref, the two
-  lifecycle integrations take the lifecycle ref. Only a genuinely new family needs a new `[versions]`
+  than inventing a number. Artifacts published as one release share one ref: the core Compose
+  Multiplatform set — runtime, foundation, ui, animation, resources, tooling, ui-test — takes the
+  Compose ref, `kotlin-test` takes the Kotlin ref, and the lifecycle integrations take the lifecycle
+  ref, including the navigation3 ViewModel integration, which is published from the lifecycle group
+  rather than with navigation3. Material 3 and the adaptive family release on their own cadence, so
+  they need their own refs even though their group starts with `org.jetbrains.compose`: reuse the ones
+  the catalog already has. Only a genuinely new family needs a new `[versions]`
   entry, and that version comes from the library's own release notes rather than from memory. A
   plausible but wrong version fails at resolution with a message about a module that cannot be found,
   which reads exactly like a typo in the coordinates and sends the next hour in the wrong direction.
@@ -296,8 +305,7 @@ point the dependencies or resources configured by another branch is evidence for
 role-specific conventions instead.
 
 Add only the `DependencyHandler` helpers these conventions need from `references/conventions.md`
-under `extensions/Dependencies.kt`. `androidRuntimeClasspath` applies only to an AGP 9 KMP Android
-library branch where that configuration exists.
+under `extensions/Dependencies.kt`; step 5 says which tooling configuration each Android plugin takes.
 
 ## Step 5 — `extensions/Compose.kt`
 
@@ -332,11 +340,6 @@ internal fun Project.configureComposeMultiplatform(extension: KotlinMultiplatfor
                 // ...
             }
 
-            androidMain.dependencies {
-                // @Preview rendering in the IDE, as opposed to the annotation.
-                implementation(libs.compose.ui.tooling)
-            }
-
             // JVM is optional in this surveyed library role; omit the lookup only when it is a
             // guaranteed target.
             findByName("jvmTest")?.dependencies {
@@ -350,45 +353,34 @@ internal fun Project.configureComposeMultiplatform(extension: KotlinMultiplatfor
             }
         }
     }
+
+    // @Preview rendering in the IDE, as opposed to the annotation.
+    dependencies.androidRuntimeClasspath(libs.compose.ui.tooling)
 }
 ```
 
 Keep the `extension.apply { sourceSets.apply { ... } }` receiver when passing this helper to
 `extensions.configure<KotlinMultiplatformExtension>(::configureComposeMultiplatform)`. Omitting the
-outer receiver can fail to compile the helper. The build-script `sourceSets { ... }` accessor may not
-be available in a compiled plugin class. Inside it, prefer direct source-set
-properties whenever the convention guarantees the target:
+outer receiver can fail to compile the helper, and the build-script `sourceSets { ... }` accessor may
+not be available in a compiled plugin class. Inside it, use direct source-set properties
+(`commonMain`, `androidMain`, `jvmTest`) whenever the convention guarantees the target, and
+`findByName(...)?` only for genuinely optional ones, with a nearby comment naming which supported
+role lacks that target.
 
-```kotlin
-sourceSets.apply {
-    androidMain.dependencies {
-        implementation(libs.compose.ui.tooling)
-    }
-    commonMain.dependencies {
-        // ...
-    }
-    commonTest.dependencies {
-        // ...
-    }
-}
-```
+**The preview renderer's configuration follows the Android plugin, not taste.** It belongs on the
+Android runtime classpath and nowhere else:
 
-Use `findByName(...)?` only for genuinely optional source sets. A generic KMP helper used across
-roles may need it for `androidMain` and `jvmTest`; the focused example above uses direct
-`androidMain` because its base convention guarantees Android. Keep a nearby comment explaining
-which supported role lacks an optional target.
+| Android plugin on the module | Tooling line |
+|---|---|
+| `com.android.kotlin.multiplatform.library` | `dependencies.androidRuntimeClasspath(libs.compose.ui.tooling)` |
+| `com.android.application` or `com.android.library` | `debugImplementation(libs.compose.ui.tooling)` inside `dependencies { }` |
 
-The preview renderer needs the tooling artifact on the Android **runtime** classpath. The
-`androidMain` placement above is the portable one. On the AGP 9 multiplatform library DSL,
-`androidRuntimeClasspath` keeps tooling off the compile classpath where it belongs:
-
-```kotlin
-dependencies.androidRuntimeClasspath(libs.compose.ui.tooling)
-```
-
-Import the helper from `extensions/Dependencies.kt` and use it only in the AGP 9 KMP Android branch
-where that configuration exists. Do not add both placements — one of them is then dead weight that
-no error will ever point at.
+Both keep the renderer off the compile classpath and out of anything published or released.
+`androidMain.dependencies { implementation(...) }` does neither: the KMP Android library plugin has no
+debug variant, so the renderer ships to every consumer, release builds included, and no error ever
+points at it. Use the helpers from `extensions/Dependencies.kt`, each only where its configuration
+exists — the KMP Android library plugin creates `androidRuntimeClasspath`, the classic plugins create
+`debugImplementation`.
 
 ## Step 6 — generated resources, for multiplatform modules
 
@@ -410,14 +402,16 @@ internal fun Project.configureComposeResources() {
 }
 
 /** `:feature:home` becomes `FeatureHomeRes` — unique per module, and readable at the use site. */
-internal fun String.toResClassName(): String = split(":")
+private fun String.toResClassName(): String = split(":")
     .filter(String::isNotEmpty)
     .joinToString("", postfix = "Res") { it.replaceFirstChar(Char::uppercaseChar) }
 ```
 
-`generateResClass = auto` so a library with no `composeResources/` directory generates nothing,
-which keeps the convention applicable to every shared Compose library rather than only the ones
-holding assets.
+`generateResClass = auto` is the default, spelled out so the policy reads in one place. It keys on an
+explicit `components-resources` dependency, not on a `composeResources/` directory: with that row
+checked in step 1, every module applying this convention generates its `Res` class, assets or not.
+With it unchecked, this naming only takes effect in modules that add the dependency themselves; use
+`always` only when the resources library reaches a module transitively.
 
 `publicResClass = true` only if modules consume each other's resources; leave it out otherwise, since
 an internal class is the better default.
@@ -435,10 +429,10 @@ Four edits, in addition to the ones in "Working on a build that already has buil
 ```toml
 [libraries]
 # Dependencies of the included build-logic
-compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin", version.ref = "compose" }
+compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin", version.ref = "<compose-ref>" }
 
 [plugins]
-compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "<compose-ref>" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
 # Focused shared-library add-on, beside the existing base library convention:
@@ -447,6 +441,8 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 <prefix>-compose = { id = "<prefix>.compose" }
 ```
 
+- `<compose-ref>` is the `[versions]` key the catalog already uses for Compose Multiplatform; reuse
+  it rather than adding a second one.
 - `compose-compiler` takes `version.ref = "kotlin"`, not a version of its own. See step 3.
 - `compose-gradle-plugin` is what puts `ComposeExtension` on the compile classpath, so it is needed
   by the resource naming in step 6 and by `compose.desktop.currentOs` in step 5. A plugin that applies

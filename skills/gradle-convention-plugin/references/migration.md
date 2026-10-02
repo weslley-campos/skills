@@ -108,7 +108,6 @@ After:
 ```kotlin
 plugins {
     alias(libs.plugins.<prefix>.android.application)
-    alias(libs.plugins.compose.compiler)
 }
 
 dependencies {
@@ -120,10 +119,11 @@ dependencies {
 The `import` at the top goes with the `kotlin { }` block. Leaving an unused import behind is a
 warning, not an error, so it survives migrations easily — check for it.
 
-This application example leaves `compose.compiler` in the module because the application
-convention does not apply it. If that convention is specifically for entry points that compile
-Compose, apply the compiler there and remove the module alias. An Android wrapper with no Compose
-compilation needs neither compiler nor `buildFeatures.compose`.
+The `compose.compiler` alias left the module with `buildFeatures.compose`: every application module
+in this build compiles Compose, so the application convention applies both. `activity-compose` stays,
+because `setContent` is this module's own dependency. If some application modules do not compile
+Compose, both lines stay out of the application convention instead — see
+[`AndroidApplicationConventionPlugin`](conventions.md#androidapplicationconventionplugin).
 
 With multiple application modules, the after-state keeps identity and version explicit:
 

@@ -230,6 +230,7 @@ import org.gradle.kotlin.dsl.configure
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
         apply(plugin = libs.plugins.android.application.get().pluginId)
+        apply(plugin = libs.plugins.compose.compiler.get().pluginId)
         configureAndroid()
 
         extensions.configure<ApplicationExtension> {
@@ -271,12 +272,16 @@ Apply plugins **by id read from the catalog**, not by a hardcoded string and not
 comes from the same catalog entry the root `apply false` block uses, so there is exactly one place
 where "which AGP plugin" is decided.
 
-`buildFeatures { compose = true }` belongs here only if every module of this type uses Compose. If
-Compose is optional across the build, it is its own convention plugin (`<prefix>.compose`) rather
-than a flag on this one — that keeps "is this module a Compose module?" visible in the module's
-`plugins { }` block instead of hidden in build-logic. Note that the flag alone compiles nothing: the
-Compose compiler is a separate KGP plugin, and `references/compose.md` covers both, along with the
-dependency list that is the real content of a Compose convention.
+The Compose compiler line and `buildFeatures { compose = true }` travel together, and belong here
+only if every module of this type compiles Compose — a `setContent { }` call counts. Then this
+convention *is* the Compose application convention, and a separate `<prefix>.compose.application`
+would be a second alias every application module always declares, expressing no choice. The flag
+alone compiles nothing, and the compiler alone leaves previews and Live Edit off, so never split them
+between the convention and the module. If Compose is optional across application modules, delete
+both lines and give Compose its own convention plugin (`<prefix>.compose`), which keeps "is this a
+Compose module?" visible in the module's `plugins { }` block. A build with no Compose at all drops
+both lines and has no `compose-compiler` catalog entry to read. `references/compose.md` covers the
+compiler and the dependency list that is the real content of a Compose convention.
 
 ## `AndroidLibraryConventionPlugin` (classic)
 

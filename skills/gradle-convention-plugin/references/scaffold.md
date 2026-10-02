@@ -181,6 +181,7 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.multiplatform.library) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.compose.compiler) apply false
     // ...every third-party plugin any module or convention plugin uses
 }
 ```
@@ -222,6 +223,7 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
 # ================================================================
 #  Plugins defined by this project
@@ -236,6 +238,9 @@ decided on in step 2 of `references/init.md` — a build with no classic Android
 `android-library` rows here nor its `apply false` line in the root build file above.
 Likewise, omit the app-version entries when there are multiple application modules; their identity
 and version values remain in each module.
+Keep `compose-compiler` and its `apply false` line only when the application convention applies
+the compiler — see [`AndroidApplicationConventionPlugin`](conventions.md#androidapplicationconventionplugin).
+It is applied by id and its types are never read, so it needs no `compileOnly` line in `build-logic`.
 
 Three things worth understanding rather than copying:
 
