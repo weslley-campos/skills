@@ -70,13 +70,18 @@ rg -n "koin|compose|navigation|lifecycle|workmanager" \
     --glob "libs.versions.toml" --glob "*.gradle.kts" --glob "AndroidManifest.xml" .
 ```
 
-Use exactly two interactions:
+Ask with `AskUserQuestion` popups, in this order:
 
-1. Show the relevant rows below as a markdown checklist, including whether each alias and
-   prerequisite already exists. Ask for one free-text response such as `accept`, or
-   `include: koin-compose; exclude: koin-annotations; add: ...`.
-2. Restate the final per-convention and per-module dependency lists and catalog edits, then ask one
-   explicit `Proceed` / `Adjust` confirmation before editing.
+1. List the checklist rows in the message with their alias and prerequisite status. Then make one
+   `AskUserQuestion` call with:
+   - a `multiSelect` question for **optional extras** (startup wiring, `koin-test`, `koin-core-viewmodel`,
+     and any other relevant optional row),
+   - a `multiSelect` question for **default dependencies to exclude**, where selecting none keeps them all.
+2. Restate the final per-convention and per-module lists and the catalog edits in the message, then ask
+   one `Proceed` / `Adjust` popup before editing.
+
+If an exclusion conflicts with a selected extra (`koin-annotations` and `koin-android` are both
+required by startup wiring), ask one more popup to resolve it before step 2.
 
 | Dependency | Where it goes | What it is for |
 |---|---|---|
