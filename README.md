@@ -264,7 +264,7 @@ Then make the skills visible to your agent. An agent finds instructions in one o
 
 ### Claude Code
 
-**Option A: as a plugin marketplace.** Updates are handled for you, and commands are namespaced as `/<plugin>:<skill>`, e.g. `/skill:commit-message`.
+**Option A: as a plugin marketplace.** Commands are namespaced as `/<plugin>:<skill>`, e.g. `/skill:commit-message`.
 
 ```text
 /plugin marketplace add weslley-campos/skills
@@ -277,6 +277,18 @@ Then make the skills visible to your agent. An agent finds instructions in one o
 | `gradle-convention-plugin` | `gradle-convention-plugin` | `/plugin install gradle-convention-plugin@weslley-skills` |
 | `gradle-module-creator` | `gradle-module-creator` + `gradle-convention-plugin` | `/plugin install gradle-module-creator@weslley-skills` |
 | `navigation3-multiplatform` | `navigation3-multiplatform` | `/plugin install navigation3-multiplatform@weslley-skills` |
+
+> [!WARNING]
+> **Updating.** Claude Code only auto-updates Anthropic's own marketplaces, so turn it on for this one once: run `/plugin`, open **Marketplaces**, select `weslley-skills` and choose **Enable auto-update**. New commits are then fetched in the background during a session, and the next session loads them.
+
+To update right away, choose **Update marketplace** in the same menu, or update one plugin from your shell. Then run `/reload-plugins` to load the new version in the current session.
+
+```bash
+claude plugin update skill@weslley-skills
+```
+
+> [!NOTE]
+> `claude plugin marketplace update` only refreshes the plugin list. It doesn't update the plugins you installed.
 
 **Option B: symlink into `~/.claude/skills/`.** The command keeps its plain name, `/commit-message`, and edits apply on the next `/reload-skills`.
 
@@ -368,7 +380,7 @@ Keep the body portable: describe the workflow and the shell commands to run. Don
 <summary><b>Claude Code plugin manifest</b></summary>
 <br>
 
-`.claude-plugin/marketplace.json` lets the repo also act as a Claude Code plugin marketplace. It is optional, and the other install methods ignore it. The `skill` bundle picks up new directories automatically. To make a skill installable on its own, add an entry and validate it:
+`.claude-plugin/marketplace.json` lets the repo also act as a Claude Code plugin marketplace. It is optional, and the other install methods ignore it. The `skill` bundle picks up new directories automatically. To make a skill installable on its own, add an entry and validate it. Don't add a `version` field. Without one, every commit counts as an update:
 
 ```json
 {
